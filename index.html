@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f172a">
+<title>DMAE 2026 - Agente Comercial</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-title">
+    <strong>DMAE Uberlândia 2026</strong>
+    <span>Agente Comercial - Cargo 301</span>
+  </div>
+  <div id="countdown" class="countdown">-</div>
+</header>
+
+<main id="main">
+
+  <section id="screen-home" class="screen active">
+    <div class="card hero">
+      <div class="ring-wrap">
+        <svg class="ring" viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+          <circle id="ring-progress" class="ring-fg" cx="60" cy="60" r="52"></circle>
+        </svg>
+        <div class="ring-label">
+          <strong id="home-today-min">0</strong>
+          <span>de 120 min</span>
+        </div>
+      </div>
+      <div class="hero-info">
+        <h1>Progresso do dia</h1>
+        <p id="home-today-msg" class="muted">Bora começar a estudar?</p>
+        <div class="hero-stats">
+          <div><strong id="stat-streak">0</strong><span>dias seguidos</span></div>
+          <div><strong id="stat-total">0h</strong><span>estudadas no total</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="timer-display" id="timer-display">00:00:00</div>
+      <div class="timer-actions">
+        <button id="timer-toggle" class="btn primary">Iniciar</button>
+        <button id="timer-reset" class="btn ghost">Zerar</button>
+      </div>
+      <p class="muted small" id="timer-hint">O tempo é salvo automaticamente no seu aparelho.</p>
+    </div>
+
+    <div class="card">
+      <h2>Missão de hoje</h2>
+      <div id="home-mission" class="mission-list"></div>
+      <button class="btn primary block" id="btn-continue">Continuar estudando</button>
+    </div>
+
+    <div class="card">
+      <h2>Matérias</h2>
+      <div id="home-subjects" class="subject-grid"></div>
+    </div>
+  </section>
+
+  <section id="screen-subjects" class="screen">
+    <h1 class="screen-title">Matérias e conteúdo</h1>
+    <p class="muted small">Matéria &gt; Assuntos &gt; Subassuntos. Toque em um assunto para ver progresso, videoaulas e questões.</p>
+    <div id="subjects-list" class="subject-list"></div>
+  </section>
+
+  <section id="screen-topic" class="screen">
+    <button id="topic-back" class="btn ghost small-btn back-btn">Voltar para matérias</button>
+    <div id="topic-detail"></div>
+  </section>
+
+  <section id="screen-plan" class="screen">
+    <h1 class="screen-title">Plano de hoje</h1>
+    <p class="muted small" id="plan-date"></p>
+    <div class="card">
+      <h2>Missão de estudo</h2>
+      <p class="muted small">2 horas por dia, 5 dias por semana. O plano adaptativo prioriza por peso da matéria, prioridade do assunto, acertos/erros e questões já respondidas.</p>
+      <div id="plan-tasks" class="task-list"></div>
+      <div class="plan-progress">
+        <div class="bar"><div id="plan-bar" class="bar-fill"></div></div>
+        <span id="plan-progress-text" class="muted small">0 de 0 tarefas</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Distribuição do tempo</h2>
+      <div id="plan-distribution" class="distribution"></div>
+    </div>
+  </section>
+
+  <section id="screen-questions" class="screen">
+    <h1 class="screen-title">Questões</h1>
+    <div class="filters">
+      <select id="question-filter">
+        <option value="all">Todas as matérias</option>
+      </select>
+      <button id="question-shuffle" class="btn ghost small-btn">Embaralhar</button>
+    </div>
+    <div id="question-context" class="muted small context-line"></div>
+    <div id="question-area" class="card"></div>
+  </section>
+
+  <section id="screen-performance" class="screen">
+    <h1 class="screen-title">Desempenho</h1>
+    <div class="perf-grid">
+      <div class="stat-card"><strong id="perf-pct">0%</strong><span>de acertos</span></div>
+      <div class="stat-card"><strong id="perf-answered">0</strong><span>respondidas</span></div>
+      <div class="stat-card ok"><strong id="perf-correct">0</strong><span>acertos</span></div>
+      <div class="stat-card err"><strong id="perf-wrong">0</strong><span>erros</span></div>
+    </div>
+    <div class="card">
+      <h2>Por matéria</h2>
+      <div id="perf-subjects" class="perf-subjects"></div>
+    </div>
+    <div class="card">
+      <h2>Progresso do edital</h2>
+      <div id="perf-syllabus" class="perf-subjects"></div>
+    </div>
+    <div class="card">
+      <h2>Histórico</h2>
+      <div id="perf-history" class="muted small"></div>
+      <button id="perf-reset" class="btn ghost block">Apagar meu desempenho</button>
+    </div>
+  </section>
+
+  <section id="screen-videos" class="screen">
+    <h1 class="screen-title">Videoaulas</h1>
+    <p class="muted small">Estrutura pronta para receber links do YouTube por matéria e assunto.</p>
+    <div class="card" id="video-form-card">
+      <h2>Adicionar videoaula</h2>
+      <label class="field">
+        <span>Matéria</span>
+        <select id="video-subject"></select>
+      </label>
+      <label class="field">
+        <span>Assunto</span>
+        <input id="video-topic" type="text" placeholder="Ex.: Atendimento ao público">
+      </label>
+      <label class="field">
+        <span>Link do YouTube</span>
+        <input id="video-url" type="url" placeholder="https://www.youtube.com/watch?v=...">
+      </label>
+      <button id="video-add" class="btn primary block">Salvar videoaula</button>
+    </div>
+    <div id="videos-list"></div>
+  </section>
+
+</main>
+
+<nav class="bottom-nav">
+  <button class="nav-btn active" data-screen="home"><span>Início</span></button>
+  <button class="nav-btn" data-screen="subjects"><span>Matérias</span></button>
+  <button class="nav-btn" data-screen="plan"><span>Plano</span></button>
+  <button class="nav-btn" data-screen="questions"><span>Questões</span></button>
+  <button class="nav-btn" data-screen="performance"><span>Desempenho</span></button>
+  <button class="nav-btn" data-screen="videos"><span>Vídeos</span></button>
+</nav>
+
+<script src="data/questions.js"></script>
+<script src="data/questions-especificos.js"></script>
+<script src="data/questions-portugues.js"></script>
+<script src="data/questions-matematica.js"></script>
+<script src="data/questions-gerais.js"></script>
+<script src="data/questions-legislacao.js"></script>
+<script src="data/content.js"></script>
+<script src="data/videos.js"></script>
+<script src="data/syllabus.js"></script>
+<script src="data/ai-config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
