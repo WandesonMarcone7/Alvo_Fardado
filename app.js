@@ -384,19 +384,47 @@
     renderSubjects();
   }
 
-  function finishTopic(topicId) {
+  function markStudied(topicId) {
     var entry = getTopicById(topicId);
     if (!entry) return;
     var rec = ensureRecord(topicId);
     rec.status = "estudado";
     rec.lastStudy = nowISO();
     rec.lastReview = nowISO();
-    markSubtopics(entry.topic, true);
+    (entry.topic.subtopics || []).forEach(function (s) { rec.subtopics[s.id] = true; });
     currentTopicId = topicId;
     contentState.lastTopic = topicId;
     saveContent();
     refreshTopicView();
     renderSubjects();
+    renderHome();
+  }
+
+  function unmarkStudied(topicId) {
+    var entry = getTopicById(topicId);
+    if (!entry) return;
+    var rec = ensureRecord(topicId);
+    rec.status = "nao_iniciado";
+    rec.subtopics = {};
+    rec.lastStudy = null;
+    rec.lastReview = null;
+    currentTopicId = topicId;
+    contentState.lastTopic = topicId;
+    saveContent();
+    refreshTopicView();
+    renderSubjects();
+    renderHome();
+  }
+
+  function toggleStudied(topicId) {
+    var entry = getTopicById(topicId);
+    if (!entry) return;
+    if (itemStatus(entry.topic) === "estudado") {
+      if (!confirm("Desmarcar este assunto como estudado? O progresso deste assunto será removido.")) return;
+      unmarkStudied(topicId);
+    } else {
+      markStudied(topicId);
+    }
   }
 
   function reviewTopic(topicId) {
@@ -625,6 +653,24 @@
     renderHome();
   }
 
+  function resetProgress() {
+    if (!confirm("Zerar todo o progresso de estudo?\n\nIsso apaga: assuntos estudados, progresso do edital, tempo de estudo e sequência.\n\nNão apaga: matérias, questões, videoaulas, plano de estudos nem suas respostas.")) return;
+    if (timerId) { clearInterval(timerId); timerId = null; }
+    sessionStart = null;
+    contentState.records = {};
+    contentState.lastTopic = null;
+    state.seconds = {};
+    state.runningSince = null;
+    saveContent();
+    saveState();
+    renderTimer();
+    renderHome();
+    renderSubjects();
+    renderPlan();
+    renderPerformance();
+    refreshTopicView();
+  }
+
   function renderHomeProgress() {
     var sec = currentLiveSeconds();
     var pct = Math.min(1, sec / (DAILY_GOAL_MIN * 60));
@@ -822,7 +868,8 @@
       '<div class="topic-sub">Última revisão: ' + formatDate(rec.lastReview) + " - último estudo: " + formatDate(rec.lastStudy) + "</div>" +
       '<div class="q-actions">' +
       '<button class="btn primary" data-act="start">Começar estudo</button>' +
-      '<button class="btn" data-act="finish">Marcar como estudado</button>' +
+      '<button class="btn' + (status === "estudado" ? " ghost" : "") + '" data-act="finish">' +
+      (status === "estudado" ? "Desmarcar como estudado" : "Marcar como estudado") + '</button>' +
       '<button class="btn ghost" data-act="review">Revisar</button>' +
       "</div></div>";
 
@@ -884,7 +931,7 @@
       };
     }
     wrap.querySelector('[data-act="start"]').onclick = function () { startTopic(topic.id); };
-    wrap.querySelector('[data-act="finish"]').onclick = function () { finishTopic(topic.id); };
+    wrap.querySelector('[data-act="finish"]').onclick = function () { toggleStudied(topic.id); };
     wrap.querySelector('[data-act="review"]').onclick = function () { reviewTopic(topic.id); };
     var practice = wrap.querySelector('[data-act="practice"]');
     if (practice) practice.onclick = function () { practiceTopic(topic.id); };
@@ -1265,6 +1312,7 @@
       renderPerformance();
       renderHomeSubjects();
     };
+    $("progress-reset").onclick = resetProgress;
     document.addEventListener("visibilitychange", function () {
       if (document.hidden) {
         saveState();
