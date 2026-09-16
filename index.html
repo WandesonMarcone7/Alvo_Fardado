@@ -44,6 +44,13 @@
     </div>
 
     <div class="card">
+      <h2>Cobertura do edital</h2>
+      <div id="coverage-summary" class="coverage-grid"></div>
+      <div class="bar" style="margin-top:4px"><div id="coverage-bar" class="bar-fill"></div></div>
+      <div id="coverage-alert" class="coverage-alert"></div>
+    </div>
+
+    <div class="card">
       <div class="timer-display" id="timer-display">00:00:00</div>
       <div class="timer-actions">
         <button id="timer-toggle" class="btn primary">Iniciar</button>
@@ -80,7 +87,7 @@
     <p class="muted small" id="plan-date"></p>
     <div class="card">
       <h2>Missão de estudo</h2>
-      <p class="muted small">2 horas por dia, 5 dias por semana. O plano adaptativo prioriza por peso da matéria, prioridade do assunto, acertos/erros e questões já respondidas.</p>
+      <p class="muted small" id="plan-intro">2 horas por dia, 5 dias por semana. O plano adaptativo prioriza por peso da matéria, prioridade do assunto, acertos/erros e questões já respondidas.</p>
       <div id="plan-tasks" class="task-list"></div>
       <div class="plan-progress">
         <div class="bar"><div id="plan-bar" class="bar-fill"></div></div>
@@ -90,6 +97,15 @@
     <div class="card">
       <h2>Distribuição do tempo</h2>
       <div id="plan-distribution" class="distribution"></div>
+    </div>
+  </section>
+
+  <section id="screen-review" class="screen">
+    <h1 class="screen-title">Revisão</h1>
+    <p class="muted small">Assuntos vencidos ou prioritários para revisar hoje. "Revisar agora" abre o conteúdo do assunto e mantém o acesso às questões.</p>
+    <div class="card">
+      <h2>Revisões de hoje</h2>
+      <div id="review-list" class="review-list"></div>
     </div>
   </section>
 
@@ -107,15 +123,44 @@
 
   <section id="screen-performance" class="screen">
     <h1 class="screen-title">Desempenho</h1>
+    <p class="muted small" id="perf-answer"></p>
     <div class="perf-grid">
       <div class="stat-card"><strong id="perf-pct">0%</strong><span>de acertos</span></div>
       <div class="stat-card"><strong id="perf-answered">0</strong><span>respondidas</span></div>
       <div class="stat-card ok"><strong id="perf-correct">0</strong><span>acertos</span></div>
       <div class="stat-card err"><strong id="perf-wrong">0</strong><span>erros</span></div>
     </div>
+    <div class="perf-grid">
+      <div class="stat-card"><strong id="perf-studied">0/89</strong><span>assuntos estudados</span></div>
+      <div class="stat-card"><strong id="perf-coverage">0%</strong><span>cobertura do edital</span></div>
+      <div class="stat-card"><strong id="perf-time">0h</strong><span>tempo estudado</span></div>
+      <div class="stat-card"><strong id="perf-days">-</strong><span>dias para a prova</span></div>
+    </div>
     <div class="card">
       <h2>Por matéria</h2>
       <div id="perf-subjects" class="perf-subjects"></div>
+    </div>
+    <div class="card">
+      <h2>Onde estou errando</h2>
+      <p class="muted small">Assuntos com pior percentual de acerto. Priorize-os nos estudos e nas revisões.</p>
+      <div id="perf-worst" class="perf-subjects"></div>
+    </div>
+    <div class="card">
+      <h2>O que ainda não estudei</h2>
+      <div id="perf-unstudied" class="perf-subjects"></div>
+    </div>
+    <div class="card">
+      <h2>Prioridades agora</h2>
+      <p class="muted small">Ranking combinando peso da matéria, importância, desempenho, erros, cobertura, revisões pendentes e dias para a prova.</p>
+      <div id="perf-priority" class="perf-subjects"></div>
+    </div>
+    <div class="card">
+      <h2>Evolução</h2>
+      <div id="perf-evolution" class="perf-subjects"></div>
+    </div>
+    <div class="card">
+      <h2>Simulados</h2>
+      <div id="perf-simulados" class="perf-subjects"></div>
     </div>
     <div class="card">
       <h2>Progresso do edital</h2>
@@ -130,6 +175,57 @@
       <h2>Configurações</h2>
       <p class="muted small">Zerar progresso apaga apenas o avanço de estudo: assuntos marcados como estudados, progresso do edital, tempo de estudo e sequência. Matérias, questões, videoaulas, plano de estudos e respostas são mantidos.</p>
       <button id="progress-reset" class="btn ghost block">Zerar progresso</button>
+    </div>
+  </section>
+
+  <section id="screen-simulado" class="screen">
+    <h1 class="screen-title">Simulado</h1>
+
+    <div id="simulado-setup" class="card">
+      <h2>Novo simulado</h2>
+      <p class="muted small">Prova no formato DMAE 2026 - Agente Comercial: 40 questões, 50 pontos. A aprovação exige no mínimo 25 pontos e não zerar nenhuma matéria.</p>
+      <div class="sim-rules">
+        <div class="sim-rule" style="border-left-color:#38bdf8"><span>Conhecimentos Específicos</span><strong>10 x 2 = 20 pts</strong></div>
+        <div class="sim-rule" style="border-left-color:#a78bfa"><span>Língua Portuguesa</span><strong>10 x 1 = 10 pts</strong></div>
+        <div class="sim-rule" style="border-left-color:#34d399"><span>Matemática e Raciocínio Lógico</span><strong>10 x 1 = 10 pts</strong></div>
+        <div class="sim-rule" style="border-left-color:#fbbf24"><span>Conhecimentos Gerais</span><strong>5 x 1 = 5 pts</strong></div>
+        <div class="sim-rule" style="border-left-color:#f87171"><span>Legislação</span><strong>5 x 1 = 5 pts</strong></div>
+      </div>
+      <p class="muted small" id="sim-bank-info"></p>
+      <button id="simulado-new" class="btn primary block">Novo simulado</button>
+    </div>
+
+    <div id="simulado-run" class="card hidden">
+      <div class="sim-run-head">
+        <div class="q-tags">
+          <span class="q-tag" id="sim-subject-tag">-</span>
+          <span class="q-tag" id="sim-topic-tag">-</span>
+        </div>
+        <div class="sim-run-meta">
+          <span class="q-progress" id="sim-progress">0/40</span>
+          <span class="q-progress" id="sim-timer">00:00:00</span>
+        </div>
+      </div>
+      <div class="bar" style="margin-bottom:12px"><div id="sim-bar" class="bar-fill"></div></div>
+      <div id="sim-question"></div>
+      <div class="q-actions">
+        <button class="btn ghost" id="sim-prev">Anterior</button>
+        <button class="btn ghost" id="sim-next">Próxima</button>
+      </div>
+      <div class="q-actions">
+        <button class="btn ghost" id="sim-abandon">Abandonar</button>
+        <button class="btn primary" id="sim-finish">Finalizar simulado</button>
+      </div>
+      <h3 class="sec-sub">Mapa de questões</h3>
+      <div id="sim-map" class="sim-map"></div>
+    </div>
+
+    <div id="simulado-result" class="hidden"></div>
+
+    <div class="card">
+      <h2>Histórico de simulados</h2>
+      <div id="simulado-history"></div>
+      <button id="simulado-clear-history" class="btn ghost block">Apagar histórico de simulados</button>
     </div>
   </section>
 
@@ -161,8 +257,10 @@
   <button class="nav-btn active" data-screen="home"><span>Início</span></button>
   <button class="nav-btn" data-screen="subjects"><span>Matérias</span></button>
   <button class="nav-btn" data-screen="plan"><span>Plano</span></button>
+  <button class="nav-btn" data-screen="review"><span>Revisão</span></button>
   <button class="nav-btn" data-screen="questions"><span>Questões</span></button>
   <button class="nav-btn" data-screen="performance"><span>Desempenho</span></button>
+  <button class="nav-btn" data-screen="simulado"><span>Simulado</span></button>
   <button class="nav-btn" data-screen="videos"><span>Vídeos</span></button>
 </nav>
 
@@ -173,6 +271,7 @@
 <script src="data/questions-gerais.js"></script>
 <script src="data/questions-legislacao.js"></script>
 <script src="data/content.js"></script>
+<script src="data/videoaulas.js"></script>
 <script src="data/videos.js"></script>
 <script src="data/syllabus.js"></script>
 <script src="data/ai-config.js"></script>

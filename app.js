@@ -5,6 +5,11 @@
   var EXAM_DATE = "2026-11-01";
   var DAILY_GOAL_MIN = 120;
   var STREAK_MIN_SECONDS = 600;
+  var REVIEW_INTERVALS = [1, 3, 7, 15, 30];
+  var REVIEW_PRIORITY_THRESHOLD = 62;
+  var SIMULADO_PASS_POINTS = 25;
+  var PLAN_VERSION = 2;
+  var MAX_PLAN_DAILY_MIN = 480;
 
   var SUBJECTS = {
     especificos: { name: "Conhecimentos Específicos", short: "Específicos", q: 10, pts: 20, color: "#38bdf8" },
@@ -20,6 +25,9 @@
   var sessionStart = state.runningSince || null;
   var timerId = null;
   var currentQuestionId = null;
+  var simTimerId = null;
+  var lastSimResult = null;
+  var coverageDay = null;
 
   var CONTENT_KEY = "dmae2026_v02";
   var STATUS_LABELS = {
@@ -34,7 +42,7 @@
   var currentTopicId = null;
 
   function defaultContent() {
-    return { v: 1, records: {}, plan: {}, lastTopic: null };
+    return { v: 1, records: {}, plan: {}, lastTopic: null, reviewDone: {} };
   }
 
   function loadContent() {
@@ -47,6 +55,7 @@
       base.records = parsed.records || {};
       base.plan = parsed.plan || {};
       base.lastTopic = parsed.lastTopic || null;
+      base.reviewDone = parsed.reviewDone || {};
       return base;
     } catch (e) {
       return base;
@@ -90,15 +99,38 @@
     return out;
   }
 
+  function blankRecord() {
+    return {
+      status: "nao_iniciado",
+      subtopics: {},
+      lastStudy: null,
+      lastReview: null,
+      firstStudy: null,
+      reviewCount: 0,
+      perf: null
+    };
+  }
+
+  function normalizeRecord(rec) {
+    if (!rec || typeof rec !== "object") return blankRecord();
+    if (!rec.subtopics || typeof rec.subtopics !== "object") rec.subtopics = {};
+    if (typeof rec.status !== "string") rec.status = "nao_iniciado";
+    if (rec.lastStudy === undefined) rec.lastStudy = null;
+    if (rec.lastReview === undefined) rec.lastReview = null;
+    if (rec.firstStudy === undefined) rec.firstStudy = null;
+    if (typeof rec.reviewCount !== "number" || isNaN(rec.reviewCount)) rec.reviewCount = 0;
+    if (rec.perf === undefined) rec.perf = null;
+    return rec;
+  }
+
   function getRecord(topicId) {
-    return contentState.records[topicId] || { status: "nao_iniciado", subtopics: {}, lastStudy: null, lastReview: null };
+    var rec = contentState.records[topicId];
+    return rec ? normalizeRecord(rec) : blankRecord();
   }
 
   function ensureRecord(topicId) {
-    if (!contentState.records[topicId]) {
-      contentState.records[topicId] = { status: "nao_iniciado", subtopics: {}, lastStudy: null, lastReview: null };
-    }
-    return contentState.records[topicId];
+    if (!contentState.records[topicId]) contentState.records[topicId] = blankRecord();
+    return normalizeRecord(contentState.records[topicId]);
   }
 
   function studiedCount(rec) {
@@ -281,6 +313,119 @@
     return pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear();
   }
 
+  function formatDateKey(key) {
+    if (!key) return "nunca";
+    var p = String(key).split("-");
+    if (p.length !== 3) return key;
+    return p[2] + "/" + p[1] + "/" + p[0];
+  }
+
+  function intervalLevel(acc) {
+    if (!acc || !acc.total) return "sem_dados";
+    var wrong = acc.wrong !== undefined ? acc.wrong : (acc.total - acc.ok);
+    if (acc.pct >= 85 && wrong <= 1) return "bom";
+    if (acc.pct < 60 || wrong >= 2) return "ruim";
+    return "medio";
+  }
+
+  function reviewPerformance(topicId) {
+    var acc = topicAccuracy(topicId);
+    if (acc.total > 0) {
+      return { ok: acc.ok, total: acc.total, wrong: acc.wrong, pct: acc.pct, level: intervalLevel(acc) };
+    }
+    var rec = getRecord(topicId);
+    if (rec.perf && rec.perf.total > 0) {
+      var p = rec.perf;
+      var wrong = p.total - (p.ok || 0);
+      return { ok: p.ok || 0, total: p.total, wrong: wrong, pct: p.pct || 0, level: intervalLevel({ ok: p.ok || 0, total: p.total, wrong: wrong, pct: p.pct || 0 }) };
+    }
+    return { ok: 0, total: 0, wrong: 0, pct: 0, level: "sem_dados" };
+  }
+
+  function perfSnapshot(topicId) {
+    var acc = topicAccuracy(topicId);
+    return { ok: acc.ok, total: acc.total, pct: acc.pct, ts: Date.now() };
+  }
+
+  function reviewIntervalDays(rec, level) {
+    var index = Math.min(rec.reviewCount || 0, REVIEW_INTERVALS.length - 1);
+    var base = REVIEW_INTERVALS[index];
+    if (level === "ruim") return Math.max(1, Math.floor(base / 2));
+    if (level === "bom") return REVIEW_INTERVALS[Math.min(index + 1, REVIEW_INTERVALS.length - 1)];
+    return base;
+  }
+
+  function nextReviewDate(rec, level) {
+    var anchor = rec.lastReview || rec.lastStudy;
+    if (!anchor) return null;
+    return addDays(dateKey(new Date(anchor)), reviewIntervalDays(rec, level));
+  }
+
+  function reviewPriorityScore(subject, topic) {
+    var rec = getRecord(topic.id);
+    var score = 0;
+    score += ((topic.importance || 3) / 5) * 25;
+    score += ((subject.points || 0) / 20) * 15;
+    if (rec.status === "estudado") score += 20;
+    else if (rec.status === "revisar") score += 16;
+    else if (rec.status === "estudando") score += 8;
+    if (rec.lastStudy && !(rec.reviewCount > 0)) score += 12;
+    var days = daysSince(rec.lastReview || rec.lastStudy);
+    if (days !== null && days > 0) score += Math.min(days, 30);
+    var acc = topicAccuracy(topic.id);
+    if (acc.total > 0) score += Math.round((acc.wrong / acc.total) * 20);
+    score -= Math.min(rec.reviewCount || 0, 5) * 2;
+    var level = reviewPerformance(topic.id).level;
+    if (level === "ruim") score += 8;
+    else if (level === "bom") score -= 4;
+    return Math.max(0, Math.round(score));
+  }
+
+  function reviewReason(topic) {
+    var rec = getRecord(topic.id);
+    var level = reviewPerformance(topic.id).level;
+    var due = nextReviewDate(rec, level);
+    var today = todayKey();
+    if (rec.lastStudy && !rec.lastReview) return "Ainda não revisado";
+    if (due && due < today) return "Revisão vencida em " + formatDateKey(due);
+    if (due && due === today) return "Revisão do dia";
+    if (rec.lastStudy && !(rec.reviewCount > 0)) return "Ainda não revisado";
+    if (level === "ruim") return "Desempenho baixo nas questões";
+    var acc = topicAccuracy(topic.id);
+    if (acc.wrong > 0) return acc.wrong + " erro(s) nas questões";
+    return "Alta prioridade";
+  }
+
+  function reviewsToday() {
+    var today = todayKey();
+    var out = [];
+    allTopics().forEach(function (entry) {
+      var rec = getRecord(entry.topic.id);
+      if (!rec.lastStudy && rec.status !== "revisar") return;
+      var level = reviewPerformance(entry.topic.id).level;
+      var due = nextReviewDate(rec, level);
+      var anchorDays = daysSince(rec.lastReview || rec.lastStudy);
+      var isDue = !!due && due <= today;
+      var score = reviewPriorityScore(entry.subject, entry.topic);
+      var highPriority = anchorDays !== null && anchorDays >= 1 && score >= REVIEW_PRIORITY_THRESHOLD;
+      if (!isDue && !highPriority) return;
+      out.push({
+        subject: entry.subject,
+        topic: entry.topic,
+        due: due,
+        overdue: isDue && due < today,
+        score: score,
+        reason: reviewReason(entry.topic)
+      });
+    });
+    out.sort(function (a, b) {
+      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+      if (b.score !== a.score) return b.score - a.score;
+      return String(a.due || "").localeCompare(String(b.due || ""));
+    });
+    return out;
+  }
+
   function reviewNeed(topicId) {
     var rec = getRecord(topicId);
     var score = 0;
@@ -312,11 +457,27 @@
     return Math.max(0, score);
   }
 
+  function studyPhase(remainingDays) {
+    if (remainingDays <= 30) {
+      return { key: "reta_final", label: "Reta final", newContent: 0, review: 1.4, perf: 1.4, revisionBonus: 30 };
+    }
+    if (remainingDays <= 90) {
+      return { key: "consolidacao", label: "Consolida\u00e7\u00e3o", newContent: 8, review: 1.2, perf: 1.15, revisionBonus: 12 };
+    }
+    return { key: "cobertura", label: "Cobertura", newContent: 22, review: 1, perf: 1, revisionBonus: 0 };
+  }
+
   function priorityScore(subject, topic) {
+    var phase = studyPhase(daysUntilExam());
+    var rec = getRecord(topic.id);
+    var isStudied = rec.status === "estudado";
     var weight = (subject.points / 20) * 26;
     var importance = ((topic.importance || 3) / 5) * 22;
     var content = Math.min((topic.subtopics || []).length, 8) / 8 * 8;
-    return Math.round(weight + importance + content + reviewNeed(topic.id) + performanceNeed(topic.id));
+    var newContent = !isStudied && (rec.status === "nao_iniciado" || rec.status === "estudando") ? phase.newContent : 0;
+    var revisionBonus = isStudied ? phase.revisionBonus : 0;
+    return Math.round(weight + importance + content + newContent + revisionBonus +
+      reviewNeed(topic.id) * phase.review + performanceNeed(topic.id) * phase.perf);
   }
 
   function rankedTopics() {
@@ -329,30 +490,156 @@
     }).sort(function (a, b) { return b.score - a.score; });
   }
 
+  function examDateAtMidnight() {
+    var parts = String(EXAM_DATE).split("-");
+    return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+  }
+
+  function startOfToday() {
+    var d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+
+  function daysUntilExam() {
+    return Math.ceil((examDateAtMidnight().getTime() - startOfToday().getTime()) / 86400000);
+  }
+
+  function estimatedTopicMinutes(subject, topic) {
+    var importance = topic.importance || 3;
+    var subs = (topic.subtopics || []).length;
+    var points = subject.points || 0;
+    var total = 50 + importance * 8 + Math.min(subs, 6) * 12 + points;
+    return Math.round(total / 5) * 5;
+  }
+
+  function firstStudyDate() {
+    var earliest = null;
+    for (var id in contentState.records) {
+      var rec = contentState.records[id];
+      if (!rec) continue;
+      var d = rec.firstStudy || rec.lastStudy;
+      if (!d) continue;
+      if (!earliest || new Date(d).getTime() < new Date(earliest).getTime()) earliest = d;
+    }
+    return earliest;
+  }
+
+  function coverageStatus(e) {
+    var cfg = {
+      completo: { key: "completo", label: "Cobertura completa", tone: "ok", color: "#34d399",
+        detail: "Todos os assuntos do edital foram estudados. Foque em revis\u00e3o e simulados." },
+      prova: { key: "prova", label: "Prova realizada", tone: "warn", color: "#94a3b8",
+        detail: "A data da prova j\u00e1 passou. Use o material para revis\u00e3o cont\u00ednua." },
+      adequado: { key: "adequado", label: "Ritmo adequado", tone: "ok", color: "#34d399",
+        detail: "Seu ritmo atual cobre o edital at\u00e9 a prova." },
+      atencao: { key: "atencao", label: "Aten\u00e7\u00e3o", tone: "warn", color: "#fbbf24",
+        detail: "O ritmo est\u00e1 pr\u00f3ximo do limite. Ajuste a carga para n\u00e3o acumular." },
+      atrasado: { key: "atrasado", label: "Atrasado", tone: "err", color: "#f87171",
+        detail: "Voc\u00ea est\u00e1 atrasado em rela\u00e7\u00e3o \u00e0 cobertura prevista. Priorize os assuntos pendentes." }
+    };
+    if (e.total > 0 && e.studied === e.total) return cfg.completo;
+    if (e.daysRemaining <= 0) return cfg.prova;
+    var loadSeverity = e.deficit <= 0 ? 0 : (e.deficit <= 45 ? 1 : 2);
+    var paceSeverity = 0;
+    if (e.remainingTopics > 0 && e.projectedDays !== null) {
+      if (e.forecast && e.forecast.getTime() <= examDateAtMidnight().getTime()) paceSeverity = 0;
+      else {
+        var lateDays = e.projectedDays - e.daysRemaining;
+        paceSeverity = lateDays <= 14 ? 1 : 2;
+      }
+    }
+    var severity = Math.max(loadSeverity, paceSeverity);
+    if (severity === 0) return cfg.adequado;
+    return severity === 1 ? cfg.atencao : cfg.atrasado;
+  }
+
+  function coverageEngine() {
+    var entries = allTopics();
+    var total = entries.length;
+    var studied = 0;
+    var progressSum = 0;
+    var remainingMinutes = 0;
+    var remainingTopics = 0;
+    entries.forEach(function (entry) {
+      var progress = itemProgress(entry.topic) / 100;
+      progressSum += progress;
+      if (itemStatus(entry.topic) === "estudado") studied++;
+      if (progress < 1) {
+        remainingTopics++;
+        remainingMinutes += estimatedTopicMinutes(entry.subject, entry.topic) * (1 - progress);
+      }
+    });
+    remainingMinutes = Math.round(remainingMinutes);
+    var daysRemaining = daysUntilExam();
+    var goalMin = DAILY_GOAL_MIN;
+    var recommendedDailyMin = daysRemaining > 0
+      ? Math.ceil(remainingMinutes / daysRemaining / 5) * 5
+      : remainingMinutes;
+    var deficit = recommendedDailyMin - goalMin;
+    var planTargetMin = Math.max(goalMin, Math.min(recommendedDailyMin, MAX_PLAN_DAILY_MIN));
+
+    var anchor = firstStudyDate();
+    var daysStudied = anchor ? Math.max(1, daysSince(anchor) + 1) : 0;
+    var paceTopicsPerDay = daysStudied ? studied / daysStudied : 0;
+    var requiredTopicsPerDay = daysRemaining > 0 ? remainingTopics / daysRemaining : remainingTopics;
+    var projectedDays = null;
+    if (remainingTopics === 0) projectedDays = 0;
+    else if (paceTopicsPerDay > 0) projectedDays = Math.ceil(remainingTopics / paceTopicsPerDay);
+    var forecast = null;
+    if (projectedDays !== null) {
+      var f = startOfToday();
+      f.setDate(f.getDate() + projectedDays);
+      forecast = f;
+    }
+    var phase = studyPhase(daysRemaining);
+    var base = {
+      total: total,
+      studied: studied,
+      remaining: total - studied,
+      remainingTopics: remainingTopics,
+      coveragePct: total ? Math.round((progressSum / total) * 100) : 0,
+      daysRemaining: daysRemaining,
+      remainingMinutes: remainingMinutes,
+      recommendedDailyMin: recommendedDailyMin,
+      goalMin: goalMin,
+      deficit: deficit,
+      planTargetMin: planTargetMin,
+      paceTopicsPerDay: paceTopicsPerDay,
+      requiredTopicsPerDay: requiredTopicsPerDay,
+      projectedDays: projectedDays,
+      forecast: forecast,
+      phase: phase
+    };
+    base.status = coverageStatus(base);
+    return base;
+  }
+
   function buildPlan(key) {
-    if (contentState.plan[key]) return contentState.plan[key];
+    var existing = contentState.plan[key];
+    if (existing && existing.v === PLAN_VERSION) return existing;
+    var target = coverageEngine().planTargetMin;
     var ranked = rankedTopics().slice(0, 5);
     var sum = 0;
     ranked.forEach(function (r) { sum += r.score; });
     var items = ranked.map(function (r) {
-      var raw = sum > 0 ? (r.score / sum) * DAILY_GOAL_MIN : DAILY_GOAL_MIN / ranked.length;
+      var raw = sum > 0 ? (r.score / sum) * target : target / ranked.length;
       return { topicId: r.topic.id, subjectId: r.subject.id, score: r.score, minutes: Math.max(10, Math.round(raw / 5) * 5) };
     });
     var total = 0;
     items.forEach(function (it) { total += it.minutes; });
     var i = 0;
-    while (total < DAILY_GOAL_MIN && items.length) {
+    while (total < target && items.length) {
       items[i % items.length].minutes += 5;
       total += 5;
       i++;
     }
-    while (total > DAILY_GOAL_MIN && items.length) {
-      var target = items[i % items.length];
-      if (target.minutes > 10) { target.minutes -= 5; total -= 5; }
+    while (total > target && items.length) {
+      var targetItem = items[i % items.length];
+      if (targetItem.minutes > 10) { targetItem.minutes -= 5; total -= 5; }
       i++;
-      if (i > 200) break;
+      if (i > 400) break;
     }
-    contentState.plan[key] = { items: items, done: {} };
+    contentState.plan[key] = { v: PLAN_VERSION, items: items, done: (existing && existing.done) || {} };
     saveContent();
     return contentState.plan[key];
   }
@@ -377,6 +664,7 @@
     var rec = ensureRecord(topicId);
     if (rec.status === "nao_iniciado") rec.status = "estudando";
     rec.lastStudy = nowISO();
+    if (!rec.firstStudy) rec.firstStudy = rec.lastStudy;
     currentTopicId = topicId;
     contentState.lastTopic = topicId;
     saveContent();
@@ -392,6 +680,8 @@
     rec.lastStudy = nowISO();
     rec.lastReview = nowISO();
     (entry.topic.subtopics || []).forEach(function (s) { rec.subtopics[s.id] = true; });
+    if (!rec.firstStudy) rec.firstStudy = rec.lastStudy;
+    rec.perf = perfSnapshot(topicId);
     currentTopicId = topicId;
     contentState.lastTopic = topicId;
     saveContent();
@@ -408,6 +698,9 @@
     rec.subtopics = {};
     rec.lastStudy = null;
     rec.lastReview = null;
+    rec.firstStudy = null;
+    rec.reviewCount = 0;
+    rec.perf = null;
     currentTopicId = topicId;
     contentState.lastTopic = topicId;
     saveContent();
@@ -433,11 +726,19 @@
     var rec = ensureRecord(topicId);
     if (rec.status !== "estudado") rec.status = "revisar";
     rec.lastReview = nowISO();
+    rec.reviewCount = (rec.reviewCount || 0) + 1;
+    if (!rec.firstStudy) rec.firstStudy = rec.lastStudy || rec.lastReview;
+    rec.perf = perfSnapshot(topicId);
     currentTopicId = topicId;
     contentState.lastTopic = topicId;
     saveContent();
     refreshTopicView();
     renderSubjects();
+  }
+
+  function revisarAgora(topicId) {
+    reviewTopic(topicId);
+    openTopic(topicId);
   }
 
   function toggleSubtopic(topicId, subId) {
@@ -479,7 +780,9 @@
       tasks: {},
       answers: {},
       videos: [],
-      runningSince: null
+      runningSince: null,
+      simulados: [],
+      activeSimulado: null
     };
   }
 
@@ -495,6 +798,8 @@
       base.answers = parsed.answers || {};
       base.videos = parsed.videos || [];
       base.runningSince = parsed.runningSince || null;
+      base.simulados = Array.isArray(parsed.simulados) ? parsed.simulados : [];
+      base.activeSimulado = parsed.activeSimulado || null;
       return base;
     } catch (e) {
       return base;
@@ -539,6 +844,22 @@
     var h = Math.floor(m / 60);
     var rest = m % 60;
     return h + "h" + (rest ? " " + pad(rest) + "min" : "");
+  }
+
+  function formatSignedMinutes(minutes) {
+    var abs = formatMinutes(Math.abs(minutes) * 60);
+    if (minutes > 0) return "+" + abs;
+    if (minutes < 0) return "-" + abs;
+    return "0 min";
+  }
+
+  function forecastLabel(engine) {
+    if (engine.total > 0 && engine.studied === engine.total) return "Conclu\u00eddo";
+    if (!engine.forecast) return "Sem ritmo";
+    var d = engine.forecast;
+    var label = pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear();
+    if (d.getTime() > examDateAtMidnight().getTime()) label += " (ap\u00f3s a prova)";
+    return label;
   }
 
   function todaySeconds() {
@@ -588,6 +909,10 @@
   }
 
   function showScreen(name) {
+    if (name !== "simulado" && simTimerId) {
+      clearInterval(simTimerId);
+      simTimerId = null;
+    }
     var screens = document.querySelectorAll(".screen");
     for (var i = 0; i < screens.length; i++) screens[i].classList.remove("active");
     var target = $("screen-" + name);
@@ -598,18 +923,18 @@
     }
     window.scrollTo(0, 0);
     if (name === "performance") renderPerformance();
+    if (name === "simulado") renderSimulado();
     if (name === "questions") renderQuestion();
     if (name === "videos") renderVideos();
     if (name === "plan") renderPlan();
+    if (name === "review") renderReview();
     if (name === "home") renderHome();
     if (name === "subjects") renderSubjects();
     if (name === "topic") renderTopicDetail();
   }
 
   function countdownText() {
-    var target = new Date(2026, 10, 1);
-    var now = new Date();
-    var diff = Math.ceil((target - now) / 86400000);
+    var diff = daysUntilExam();
     if (diff > 0) return diff + " dias p/ prova";
     if (diff === 0) return "Prova hoje!";
     return "Prova realizada";
@@ -626,6 +951,7 @@
       saveState();
     }
     renderHomeProgress();
+    if (coverageDay !== todayKey()) renderCoverage();
   }
 
   function toggleTimer() {
@@ -654,10 +980,11 @@
   }
 
   function resetProgress() {
-    if (!confirm("Zerar todo o progresso de estudo?\n\nIsso apaga: assuntos estudados, progresso do edital, tempo de estudo e sequência.\n\nNão apaga: matérias, questões, videoaulas, plano de estudos nem suas respostas.")) return;
+    if (!confirm("Zerar todo o progresso de estudo?\n\nIsso apaga: assuntos estudados, revisões agendadas, progresso do edital, tempo de estudo e sequência.\n\nNão apaga: matérias, questões, videoaulas, plano de estudos nem suas respostas.")) return;
     if (timerId) { clearInterval(timerId); timerId = null; }
     sessionStart = null;
     contentState.records = {};
+    contentState.reviewDone = {};
     contentState.lastTopic = null;
     state.seconds = {};
     state.runningSince = null;
@@ -668,6 +995,7 @@
     renderSubjects();
     renderPlan();
     renderPerformance();
+    renderReview();
     refreshTopicView();
   }
 
@@ -688,14 +1016,70 @@
   function renderHome() {
     renderTimer();
     renderHomeProgress();
+    renderCoverage();
     renderHomeMission();
     renderHomeSubjects();
+  }
+
+  function coverageCell(value, label) {
+    return '<div class="coverage-cell"><strong>' + value + '</strong><span>' + label + '</span></div>';
+  }
+
+  function coverageAlertDetail(engine) {
+    var detail = "Meta: " + formatMinutes(engine.goalMin * 60) + "/dia | Necess\u00e1rio: " +
+      formatMinutes(engine.recommendedDailyMin * 60) + "/dia | " +
+      (engine.deficit > 0 ? "D\u00e9ficit: " + formatMinutes(engine.deficit * 60) : "D\u00e9ficit: 0 min") + ".";
+    if (engine.deficit <= 0 && engine.studied < engine.total) {
+      detail = "Meta: " + formatMinutes(engine.goalMin * 60) + "/dia | Necess\u00e1rio: " +
+        formatMinutes(engine.recommendedDailyMin * 60) + "/dia | Sobra: " + formatMinutes(-engine.deficit * 60) + ".";
+    }
+    if (engine.phase.key === "reta_final") {
+      detail += " Reta final: priorize revis\u00e3o, quest\u00f5es e simulados.";
+    }
+    return detail;
+  }
+
+  function renderCoverage() {
+    var wrap = $("coverage-summary");
+    if (!wrap) return;
+    coverageDay = todayKey();
+    var engine = coverageEngine();
+    var daysLabel = engine.daysRemaining > 0 ? engine.daysRemaining + " dias" : "0 dias";
+    wrap.innerHTML =
+      coverageCell(daysLabel, "at\u00e9 a prova") +
+      coverageCell(engine.studied + "/" + engine.total, "assuntos estudados") +
+      coverageCell(engine.coveragePct + "%", "cobertura do edital") +
+      coverageCell(formatMinutes(engine.recommendedDailyMin * 60), "necess\u00e1rio/dia") +
+      coverageCell(formatMinutes(engine.goalMin * 60), "meta atual") +
+      coverageCell(formatSignedMinutes(engine.deficit), "diferen\u00e7a (necess\u00e1rio - meta)") +
+      coverageCell(forecastLabel(engine), "previs\u00e3o de conclus\u00e3o") +
+      coverageCell(engine.phase.label, "fase (" + engine.remainingTopics + " assuntos pendentes)");
+    var bar = $("coverage-bar");
+    if (bar) {
+      bar.style.width = engine.coveragePct + "%";
+      bar.style.background = engine.status.color;
+    }
+    var alert = $("coverage-alert");
+    if (alert) {
+      alert.className = "coverage-alert " + engine.status.tone;
+      alert.innerHTML = "<strong>" + engine.status.label + "</strong><span>" + engine.status.detail + "</span><span>" +
+        coverageAlertDetail(engine) + "</span>";
+    }
   }
 
   function renderHomeMission() {
     var key = todayKey();
     var wrap = $("home-mission");
     wrap.innerHTML = "";
+    var reviews = reviewsToday();
+    reviews.forEach(function (r) {
+      var done = isReviewTaskDone(key, r.topic.id);
+      var div = document.createElement("div");
+      div.className = "mission-item review-mission" + (done ? " done" : "");
+      div.innerHTML = '<span class="mission-name">Revisão: ' + r.topic.name + "</span>" +
+        '<span class="mission-min">' + (done ? "ok - " : "") + r.reason + "</span>";
+      wrap.appendChild(div);
+    });
     var plan = buildPlan(key);
     plan.items.forEach(function (item) {
       var entry = getTopicById(item.topicId);
@@ -851,11 +1235,21 @@
       return topicIdOfQuestion(q) === topic.id;
     });
 
+    var importance = topic.importance || 0;
+    var topicVideos = (window.DATA_VIDEOAULAS || []).filter(function (v) {
+      return v.topicId === topic.id;
+    });
+    var mainVideos = topicVideos.filter(function (v) { return !v.semVideo && v.tipo === "principal"; });
+    var extraVideos = topicVideos.filter(function (v) { return !v.semVideo && v.tipo === "complementar"; });
+    var missingVideo = topicVideos.length > 0 && topicVideos.every(function (v) { return v.semVideo; });
+    var topicContent = (window.DATA_CONTENT || {})[topic.id];
+
     var html = '<div class="card" style="border-left:5px solid ' + info.color + '">' +
       '<div class="acc-meta"><span style="color:' + info.color + '">' + subject.name + "</span></div>" +
       "<h1>" + topic.name + "</h1>" +
       '<div class="topic-head" style="justify-content:flex-start;gap:10px;margin:8px 0">' +
       '<span class="badge" style="background:' + meta.color + '">' + meta.label + '</span>' +
+      '<span class="priority-chip">Importância ' + importance + '/5</span>' +
       '<span class="priority-chip">Prioridade ' + score + '</span></div>' +
       '<div class="bar"><div class="bar-fill" style="width:' + progress + "%;background:" + info.color + '"></div></div>' +
       '<div class="stat-row">' +
@@ -866,43 +1260,91 @@
       '<div class="stat-pill"><strong>' + acc.wrong + '</strong><span>erros</span></div>' +
       "</div>" +
       '<div class="topic-sub">Última revisão: ' + formatDate(rec.lastReview) + " - último estudo: " + formatDate(rec.lastStudy) + "</div>" +
+      "</div>";
+
+    html += '<div class="card"><h2>Conteúdo</h2>';
+    if (topicContent && topicContent.resumo) {
+      html += '<p class="small">' + topicContent.resumo + "</p>";
+    } else {
+      html += '<p class="muted small">Conteúdo em preparação para este assunto. Consulte o texto do edital.</p>';
+    }
+    if (topicContent && topicContent.conceitos && topicContent.conceitos.length) {
+      html += '<h3 class="sec-sub">Conceitos que você precisa dominar</h3><div class="subtopic-list">' +
+        topicContent.conceitos.map(function (c) {
+          return '<div class="subtopic-item"><span>' + c + "</span></div>";
+        }).join("") + "</div>";
+    }
+    if (topicContent && topicContent.termos && topicContent.termos.length) {
+      html += '<h3 class="sec-sub">Termos e definições</h3><div class="term-list">' +
+        topicContent.termos.map(function (t) {
+          return '<div class="term-item"><strong>' + t.t + "</strong><span>" + t.d + "</span></div>";
+        }).join("") + "</div>";
+    }
+    if (topicContent && topicContent.referencia) {
+      html += '<div class="ref-line"><strong>Referência: </strong>' + topicContent.referencia + "</div>";
+    }
+    if (topicContent && topicContent.atualizacao) {
+      html += '<div class="notice">Conteúdo sujeito a atualização periódica. Revise com fontes oficiais antes da prova.</div>';
+    }
+    html += "</div>";
+
+    html += '<div class="card"><h2>Pontos importantes</h2>';
+    if (topicContent && topicContent.pontos && topicContent.pontos.length) {
+      html += '<div class="subtopic-list">' + topicContent.pontos.map(function (p) {
+        return '<div class="subtopic-item"><span>' + p + "</span></div>";
+      }).join("") + "</div>";
+    } else {
+      html += '<p class="muted small">Sem tópicos destacados registrados.</p>';
+    }
+    if (topicContent && topicContent.atencao && topicContent.atencao.length) {
+      html += '<h3 class="sec-sub">Pontos de atenção</h3><div class="subtopic-list">' +
+        topicContent.atencao.map(function (a) {
+          return '<div class="subtopic-item warn"><span>' + a + "</span></div>";
+        }).join("") + "</div>";
+    }
+    if ((topic.subtopics || []).length) {
+      html += '<h3 class="sec-sub">Conteúdo programático</h3><div class="subtopic-list">' +
+        topic.subtopics.map(function (s) {
+          var done = !!rec.subtopics[s.id];
+          return '<label class="subtopic-item' + (done ? " done" : "") + '"><input type="checkbox"' + (done ? " checked" : "") +
+            ' data-sub="' + s.id + '"><span>' + s.name + "</span></label>";
+        }).join("") + "</div>";
+    }
+    html += "</div>";
+
+    html += '<div class="card"><h2>Videoaulas</h2>';
+    if (mainVideos.length || extraVideos.length) {
+      mainVideos.forEach(function (v) {
+        html += '<a class="video-mini" href="' + v.url + '" target="_blank" rel="noopener">' +
+          "<strong>" + v.titulo + "</strong>" +
+          '<span class="video-meta">Principal' + (v.canal ? " - " + v.canal : "") + "</span></a>";
+      });
+      extraVideos.forEach(function (v) {
+        html += '<a class="video-mini" href="' + v.url + '" target="_blank" rel="noopener">' +
+          "<strong>" + v.titulo + "</strong>" +
+          '<span class="video-meta">Complementar' + (v.canal ? " - " + v.canal : "") + "</span></a>";
+      });
+    } else if (missingVideo) {
+      html += '<div class="notice">' + topicVideos[0].motivo + "</div>";
+    } else {
+      html += '<p class="muted small">Nenhuma videoaula selecionada para este assunto.</p>';
+    }
+    if (videos.length) {
+      html += '<h3 class="sec-sub">Minhas videoaulas</h3>';
+      videos.forEach(function (v) {
+        html += '<a class="video-mini" href="' + v.url + '" target="_blank" rel="noopener">' + (v.title || v.url) + "</a>";
+      });
+    }
+    html += "</div>";
+
+    html += '<div class="card"><h2>Meu progresso neste assunto</h2>' +
+      '<div class="topic-sub">Marque como estudado para registrar seu avanço e atualizar o progresso do edital.</div>' +
       '<div class="q-actions">' +
       '<button class="btn primary" data-act="start">Começar estudo</button>' +
       '<button class="btn' + (status === "estudado" ? " ghost" : "") + '" data-act="finish">' +
       (status === "estudado" ? "Desmarcar como estudado" : "Marcar como estudado") + '</button>' +
       '<button class="btn ghost" data-act="review">Revisar</button>' +
       "</div></div>";
-
-    html += '<div class="card"><h2>Conteúdo programático</h2><div class="subtopic-list">' +
-      (topic.subtopics || []).map(function (s) {
-        var done = !!rec.subtopics[s.id];
-        return '<label class="subtopic-item' + (done ? " done" : "") + '"><input type="checkbox"' + (done ? " checked" : "") +
-          ' data-sub="' + s.id + '"><span>' + s.name + "</span></label>";
-      }).join("") + "</div></div>";
-
-    var topicContent = (window.DATA_CONTENT || {})[topic.id];
-    if (topicContent && topicContent.resumo) {
-      html += '<div class="card"><h2>Resumo direcionado ao edital</h2><p class="small">' + topicContent.resumo + "</p>";
-      if (topicContent.pontos && topicContent.pontos.length) {
-        html += '<div class="subtopic-list">' + topicContent.pontos.map(function (p) {
-          return '<div class="subtopic-item"><span>' + p + "</span></div>";
-        }).join("") + "</div>";
-      }
-      if (topicContent.atualizacao) {
-        html += '<div class="notice">Conteúdo sujeito a atualização periódica. Revise com fontes oficiais antes da prova.</div>';
-      }
-      html += "</div>";
-    }
-
-    html += '<div class="card"><h2>Videoaulas disponíveis</h2>';
-    if (videos.length) {
-      videos.forEach(function (v) {
-        html += '<a class="video-mini" href="' + v.url + '" target="_blank" rel="noopener">' + (v.title || v.url) + "</a>";
-      });
-    } else {
-      html += '<p class="muted small">Nenhuma videoaula cadastrada para este assunto. Cadastre na aba Vídeos usando o assunto "' + topic.name + '".</p>';
-    }
-    html += "</div>";
 
     html += '<div class="card"><h2>Questões deste assunto</h2>';
     var bankStats = topicBankStats(topic.id);
@@ -958,11 +1400,22 @@
 
   function renderPlan() {
     var key = todayKey();
-    $("plan-date").textContent = "Hoje, " + key.split("-").reverse().join("/") + " - meta de " + DAILY_GOAL_MIN + " min. Assuntos escolhidos automaticamente pela prioridade.";
+    var engine = coverageEngine();
+    var targetLabel = engine.planTargetMin > engine.goalMin
+      ? "carga necess\u00e1ria de " + formatMinutes(engine.planTargetMin * 60) + " (meta " + formatMinutes(engine.goalMin * 60) + ")"
+      : "meta de " + formatMinutes(engine.goalMin * 60);
+    $("plan-date").textContent = "Hoje, " + key.split("-").reverse().join("/") + " - " + targetLabel +
+      " para cobrir " + engine.remainingTopics + " assunto(s) em " + engine.daysRemaining + " dia(s).";
+    var intro = $("plan-intro");
+    if (intro) {
+      intro.textContent = "Prioridade calculada pelo peso da mat\u00e9ria, import\u00e2ncia do assunto, quantidade de conte\u00fado, " +
+        "desempenho e revis\u00f5es pendentes. A carga di\u00e1ria acompanha a cobertura do edital e pode superar a meta configurada.";
+    }
     var plan = buildPlan(key);
     var wrap = $("plan-tasks");
     wrap.innerHTML = "";
     var doneCount = 0;
+    var reviews = reviewsToday();
     plan.items.forEach(function (item) {
       var entry = getTopicById(item.topicId);
       if (!entry) return;
@@ -984,19 +1437,25 @@
       row.appendChild(makeOpenButton(item.topicId));
       wrap.appendChild(row);
     });
-    if (!plan.items.length) wrap.innerHTML = '<div class="empty">Sem assuntos no plano.</div>';
-    var total = plan.items.length;
+    reviews.forEach(function (review) {
+      if (isReviewTaskDone(key, review.topic.id)) doneCount++;
+      wrap.appendChild(buildReviewTaskRow(key, review));
+    });
+    if (!plan.items.length && !reviews.length) wrap.innerHTML = '<div class="empty">Sem assuntos no plano.</div>';
+    var total = plan.items.length + reviews.length;
     var pct = total ? Math.round((doneCount / total) * 100) : 0;
     $("plan-bar").style.width = pct + "%";
     $("plan-progress-text").textContent = doneCount + " de " + total + " assuntos - " + pct + "%";
 
+    var planMinutes = 0;
+    plan.items.forEach(function (item) { planMinutes += item.minutes; });
     var dist = $("plan-distribution");
     dist.innerHTML = "";
     plan.items.forEach(function (item) {
       var entry = getTopicById(item.topicId);
       if (!entry) return;
       var s = SUBJECTS[entry.subject.id] || { short: entry.subject.short, color: entry.subject.color };
-      var pct2 = Math.round((item.minutes / DAILY_GOAL_MIN) * 100);
+      var pct2 = planMinutes ? Math.round((item.minutes / planMinutes) * 100) : 0;
       var row = document.createElement("div");
       row.className = "dist-row";
       row.innerHTML = '<div class="dist-head"><span>' + entry.topic.name + "</span><span>" + item.minutes + " min (" + pct2 + "%)</span></div>" +
@@ -1015,6 +1474,79 @@
       openTopic(topicId);
     };
     return btn;
+  }
+
+  function reviewDoneKey(key, topicId) {
+    return key + "|" + topicId;
+  }
+
+  function isReviewTaskDone(key, topicId) {
+    return !!(contentState.reviewDone && contentState.reviewDone[reviewDoneKey(key, topicId)]);
+  }
+
+  function toggleReviewTask(key, topicId) {
+    if (!contentState.reviewDone) contentState.reviewDone = {};
+    var k = reviewDoneKey(key, topicId);
+    contentState.reviewDone[k] = !contentState.reviewDone[k];
+    saveContent();
+    renderHome();
+    renderPlan();
+  }
+
+  function buildReviewTaskRow(key, review) {
+    var done = isReviewTaskDone(key, review.topic.id);
+    var row = document.createElement("label");
+    row.className = "task-item review-task" + (done ? " done" : "");
+    var cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = done;
+    cb.onchange = function () { toggleReviewTask(key, review.topic.id); };
+    var text = document.createElement("span");
+    text.className = "task-text";
+    text.innerHTML = "Revisão: " + review.topic.name + "<small>" + review.subject.name + " - " +
+      review.reason + " - prioridade " + review.score + "</small>";
+    row.appendChild(cb);
+    row.appendChild(text);
+    row.appendChild(makeOpenButton(review.topic.id));
+    return row;
+  }
+
+  function makeReviewNowButton(topicId) {
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn primary small-btn";
+    btn.textContent = "Revisar agora";
+    btn.onclick = function (ev) {
+      ev.preventDefault();
+      revisarAgora(topicId);
+    };
+    return btn;
+  }
+
+  function renderReview() {
+    var wrap = $("review-list");
+    if (!wrap) return;
+    var list = reviewsToday();
+    wrap.innerHTML = "";
+    if (!list.length) {
+      wrap.innerHTML = '<div class="empty">Nenhuma revisão pendente para hoje. Marque assuntos como estudados para agendar as próximas revisões.</div>';
+      return;
+    }
+    var summary = document.createElement("p");
+    summary.className = "muted small";
+    summary.textContent = list.length + " assunto(s) na fila de revisão, ordenados por atraso e prioridade.";
+    wrap.appendChild(summary);
+    list.forEach(function (review) {
+      var row = document.createElement("div");
+      row.className = "task-item review-item";
+      var text = document.createElement("span");
+      text.className = "task-text";
+      text.innerHTML = review.topic.name + "<small>" + review.subject.name + " - " +
+        review.reason + " - prioridade " + review.score + "</small>";
+      row.appendChild(text);
+      row.appendChild(makeReviewNowButton(review.topic.id));
+      wrap.appendChild(row);
+    });
   }
 
 
@@ -1160,26 +1692,389 @@
   }
 
   function renderPerformance() {
-    var total = accuracyOf(null);
-    $("perf-pct").textContent = total.pct + "%";
-    $("perf-answered").textContent = total.total;
-    $("perf-correct").textContent = total.ok;
-    $("perf-wrong").textContent = total.total - total.ok;
+    renderPerfSummary();
+    renderPerfSubjects();
+    renderPerfWorst();
+    renderPerfUnstudied();
+    renderPerfPriority();
+    renderPerfEvolution();
+    renderPerfHistory();
+    renderPerfSyllabus();
+    renderPerformanceSimulados();
+  }
 
-    var wrap = $("perf-subjects");
-    wrap.innerHTML = "";
-    SUBJECT_ORDER.forEach(function (key) {
+  function totalStudiedTopics() {
+    var n = 0;
+    allTopics().forEach(function (entry) {
+      if (itemStatus(entry.topic) === "estudado") n++;
+    });
+    return n;
+  }
+
+  function subjectCoverage(subject) {
+    var topics = subject.topics || [];
+    var studied = 0;
+    topics.forEach(function (t) { if (itemStatus(t) === "estudado") studied++; });
+    return { studied: studied, total: topics.length, pct: subjectProgress(subject) };
+  }
+
+  function performanceOverview() {
+    var acc = accuracyOf(null);
+    var engine = coverageEngine();
+    return {
+      answered: acc.total,
+      correct: acc.ok,
+      wrong: acc.total - acc.ok,
+      pct: acc.pct,
+      studied: engine.studied,
+      totalTopics: engine.total,
+      coveragePct: engine.coveragePct,
+      totalSeconds: totalSeconds(),
+      daysRemaining: engine.daysRemaining
+    };
+  }
+
+  function subjectPerformance() {
+    return SUBJECT_ORDER.map(function (key) {
       var s = SUBJECTS[key];
+      var subject = getSubject(key);
       var acc = accuracyOf(key);
+      var cov = subject ? subjectCoverage(subject) : { studied: 0, total: 0, pct: 0 };
+      return {
+        key: key,
+        name: s.name,
+        short: s.short,
+        color: s.color,
+        answered: acc.total,
+        correct: acc.ok,
+        wrong: acc.total - acc.ok,
+        pct: acc.pct,
+        studied: cov.studied,
+        totalTopics: cov.total,
+        coveragePct: cov.pct
+      };
+    });
+  }
+
+  function worstTopics(limit) {
+    var out = [];
+    allTopics().forEach(function (entry) {
+      var acc = topicAccuracy(entry.topic.id);
+      if (acc.total <= 0) return;
+      out.push({
+        subject: entry.subject,
+        topic: entry.topic,
+        answered: acc.total,
+        correct: acc.ok,
+        wrong: acc.wrong,
+        pct: acc.pct
+      });
+    });
+    out.sort(function (a, b) {
+      if (a.pct !== b.pct) return a.pct - b.pct;
+      if (b.wrong !== a.wrong) return b.wrong - a.wrong;
+      return b.answered - a.answered;
+    });
+    return limit ? out.slice(0, limit) : out;
+  }
+
+  function unstudiedTopics(limit) {
+    var out = [];
+    allTopics().forEach(function (entry) {
+      if (itemStatus(entry.topic) === "estudado") return;
+      out.push({
+        subject: entry.subject,
+        topic: entry.topic,
+        progress: itemProgress(entry.topic),
+        score: priorityScore(entry.subject, entry.topic)
+      });
+    });
+    out.sort(function (a, b) { return b.score - a.score; });
+    return limit ? out.slice(0, limit) : out;
+  }
+
+  function priorityBreakdown(subject, topic) {
+    var acc = topicAccuracy(topic.id);
+    return {
+      topicId: topic.id,
+      subjectId: subject.id,
+      subject: subject,
+      topic: topic,
+      weight: Math.round(((subject.points || 0) / 20) * 26),
+      importance: Math.round(((topic.importance || 3) / 5) * 22),
+      content: Math.round((Math.min((topic.subtopics || []).length, 8) / 8) * 8),
+      performance: performanceNeed(topic.id),
+      review: reviewNeed(topic.id),
+      errors: acc.wrong,
+      answered: acc.total,
+      accuracy: acc.pct,
+      coverage: itemProgress(topic),
+      status: itemStatus(topic),
+      phase: studyPhase(daysUntilExam()).key,
+      score: priorityScore(subject, topic)
+    };
+  }
+
+  function priorityTopics(limit) {
+    var out = rankedTopics().map(function (r) {
+      return priorityBreakdown(r.subject, r.topic);
+    });
+    return limit ? out.slice(0, limit) : out;
+  }
+
+  function simuladoStats() {
+    var list = (state.simulados || []).slice().sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });
+    if (!list.length) {
+      return {
+        count: 0, best: null, last: null, averagePoints: 0,
+        averagePct: 0, approved: 0, approvalRate: 0, series: []
+      };
+    }
+    var best = list[0];
+    var sumPoints = 0;
+    var sumPct = 0;
+    var approved = 0;
+    list.forEach(function (r) {
+      if ((r.points || 0) > (best.points || 0)) best = r;
+      sumPoints += r.points || 0;
+      sumPct += r.pct || 0;
+      if (r.approved) approved++;
+    });
+    return {
+      count: list.length,
+      best: best,
+      last: list[list.length - 1],
+      averagePoints: Math.round((sumPoints / list.length) * 10) / 10,
+      averagePct: Math.round(sumPct / list.length),
+      approved: approved,
+      approvalRate: Math.round((approved / list.length) * 100),
+      series: list.map(function (r) {
+        return { ts: r.ts, points: r.points || 0, maxPoints: r.maxPoints || 0, pct: r.pct || 0, approved: !!r.approved };
+      })
+    };
+  }
+
+  function timeEvolution(days) {
+    var key = todayKey();
+    var out = [];
+    for (var i = days - 1; i >= 0; i--) {
+      var d = addDays(key, -i);
+      out.push({ key: d, seconds: state.seconds[d] || 0 });
+    }
+    return out;
+  }
+
+  function answerEvolution() {
+    var byDay = {};
+    for (var id in state.answers) {
+      var a = state.answers[id];
+      if (!a || !a.ts) continue;
+      var k = dateKey(new Date(a.ts));
+      if (!byDay[k]) byDay[k] = { key: k, ok: 0, total: 0 };
+      byDay[k].total++;
+      if (a.correct) byDay[k].ok++;
+    }
+    return Object.keys(byDay).sort().map(function (k) {
+      var d = byDay[k];
+      return { key: k, ok: d.ok, total: d.total, pct: d.total ? Math.round((d.ok / d.total) * 100) : 0 };
+    });
+  }
+
+  function hasEnoughEvolution() {
+    return timeEvolution(7).filter(function (d) { return d.seconds > 0; }).length >= 2 ||
+      answerEvolution().length >= 2 ||
+      simuladoStats().count >= 2;
+  }
+
+  function renderPerfSummary() {
+    var o = performanceOverview();
+    var pct = $("perf-pct");
+    if (!pct) return;
+    pct.textContent = o.pct + "%";
+    $("perf-answered").textContent = o.answered;
+    $("perf-correct").textContent = o.correct;
+    $("perf-wrong").textContent = o.wrong;
+    $("perf-studied").textContent = o.studied + "/" + o.totalTopics;
+    $("perf-coverage").textContent = o.coveragePct + "%";
+    $("perf-time").textContent = formatMinutes(o.totalSeconds);
+    $("perf-days").textContent = o.daysRemaining > 0 ? o.daysRemaining : "0";
+    var note = $("perf-answer");
+    if (note) {
+      note.textContent = o.answered
+        ? "Você já respondeu " + o.answered + " questão(ões): " + o.correct + " acerto(s) e " + o.wrong + " erro(s)."
+        : "Você ainda não respondeu questões. Comece pela aba Questões para gerar sua análise.";
+    }
+  }
+
+  function renderPerfSubjects() {
+    var wrap = $("perf-subjects");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    subjectPerformance().forEach(function (s) {
       var row = document.createElement("div");
       row.className = "perf-subject";
-      row.innerHTML = '<div class="ps-head"><span>' + s.short + "</span><span>" +
-        (acc.total ? acc.ok + "/" + acc.total + " - " + acc.pct + "%" : "sem respostas") + "</span></div>" +
-        '<div class="bar"><div class="bar-fill" style="width:' + acc.pct + "%;background:" + s.color + '"></div></div>';
+      row.innerHTML =
+        '<div class="ps-head"><span style="color:' + s.color + '">' + s.short + "</span><span>" +
+        (s.answered ? s.correct + "/" + s.answered + " - " + s.pct + "%" : "sem respostas") + "</span></div>" +
+        '<div class="bar"><div class="bar-fill" style="width:' + s.pct + "%;background:" + s.color + '"></div></div>' +
+        '<div class="ps-sub">respondidas ' + s.answered + " - acertos " + s.correct + " - erros " + s.wrong +
+        " - assuntos " + s.studied + "/" + s.totalTopics + " (" + s.coveragePct + "% de cobertura)</div>" +
+        '<div class="bar bar-thin" style="margin-top:4px"><div class="bar-fill" style="width:' + s.coveragePct +
+        "%;background:var(--muted)\"></div></div>";
       wrap.appendChild(row);
     });
+  }
 
+  function perfEmpty(wrap, msg) {
+    wrap.innerHTML = '<div class="empty">' + msg + "</div>";
+  }
+
+  function renderPerfWorst() {
+    var wrap = $("perf-worst");
+    if (!wrap) return;
+    var list = worstTopics(6);
+    wrap.innerHTML = "";
+    if (!list.length) {
+      perfEmpty(wrap, "Sem respostas suficientes. Responda questões para identificar onde você erra mais.");
+      return;
+    }
+    list.forEach(function (t) {
+      var s = SUBJECTS[t.subject.id] || { color: t.subject.color, short: t.subject.short };
+      var row = document.createElement("div");
+      row.className = "perf-subject";
+      row.innerHTML =
+        '<div class="ps-head"><span>' + t.topic.name + "</span><span>" + t.pct + "% (" +
+        t.correct + "/" + t.answered + ")</span></div>" +
+        '<div class="bar"><div class="bar-fill" style="width:' + t.pct + "%;background:" + (t.pct < 60 ? "var(--err)" : s.color) + '"></div></div>' +
+        '<div class="ps-sub">' + s.short + " - " + t.wrong + " erro(s) em " + t.answered + " questão(ões)</div>";
+      wrap.appendChild(row);
+    });
+  }
+
+  function renderPerfUnstudied() {
+    var wrap = $("perf-unstudied");
+    if (!wrap) return;
+    var all = unstudiedTopics();
+    wrap.innerHTML = "";
+    if (!all.length) {
+      perfEmpty(wrap, "Todos os 89 assuntos do edital já foram estudados. Foque em revisão e simulados.");
+      return;
+    }
+    var summary = document.createElement("div");
+    summary.className = "muted small";
+    summary.style.marginBottom = "10px";
+    summary.textContent = all.length + " assunto(s) ainda não estudado(s). Os mais prioritários aparecem primeiro.";
+    wrap.appendChild(summary);
+    all.slice(0, 8).forEach(function (t) {
+      var s = SUBJECTS[t.subject.id] || { color: t.subject.color, short: t.subject.short };
+      var row = document.createElement("div");
+      row.className = "perf-subject";
+      row.innerHTML =
+        '<div class="ps-head"><span>' + t.topic.name + "</span><span>prioridade " + t.score + "</span></div>" +
+        '<div class="ps-sub">' + s.short + " - import\u00e2ncia " + (t.topic.importance || 3) +
+        "/5 - progresso " + t.progress + "%</div>";
+      wrap.appendChild(row);
+    });
+  }
+
+  function priorityReason(b) {
+    var parts = [];
+    if (b.status === "nao_iniciado") parts.push("n\u00e3o estudado");
+    else if (b.status === "estudando") parts.push("em andamento");
+    if (b.errors > 0) parts.push(b.errors + " erro(s)");
+    if (b.review > 0 && b.status === "estudado") parts.push("revis\u00e3o pendente");
+    if (b.accuracy > 0 && b.accuracy < 60) parts.push("acerto baixo");
+    if (!parts.length) parts.push("peso " + b.weight + " / import\u00e2ncia " + b.importance);
+    return parts.join(" - ");
+  }
+
+  function renderPerfPriority() {
+    var wrap = $("perf-priority");
+    if (!wrap) return;
+    var list = priorityTopics(6);
+    wrap.innerHTML = "";
+    if (!list.length) {
+      perfEmpty(wrap, "Sem assuntos para priorizar.");
+      return;
+    }
+    var phase = studyPhase(daysUntilExam());
+    var summary = document.createElement("div");
+    summary.className = "muted small";
+    summary.style.marginBottom = "10px";
+    summary.textContent = "Fase " + phase.label + " - faltam " + daysUntilExam() + " dia(s) para a prova. Ranking combina peso, import\u00e2ncia, desempenho, erros, cobertura e revis\u00f5es.";
+    wrap.appendChild(summary);
+    list.forEach(function (b) {
+      var s = SUBJECTS[b.subjectId] || { color: b.subject.color, short: b.subject.short };
+      var row = document.createElement("div");
+      row.className = "perf-subject";
+      row.innerHTML =
+        '<div class="ps-head"><span>' + b.topic.name + "</span><span>prioridade " + b.score + "</span></div>" +
+        '<div class="bar"><div class="bar-fill" style="width:' + Math.min(100, b.score) + "%;background:" + s.color + '"></div></div>' +
+        '<div class="ps-sub">' + s.short + " - " + priorityReason(b) + " - cobertura " + b.coverage + "%</div>" +
+        '<div class="chips">' +
+        '<span class="chip">peso ' + b.weight + "</span>" +
+        '<span class="chip">import\u00e2ncia ' + b.importance + "</span>" +
+        '<span class="chip">conte\u00fado ' + b.content + "</span>" +
+        '<span class="chip">desempenho ' + b.performance + "</span>" +
+        '<span class="chip">revis\u00e3o ' + b.review + "</span>" +
+        "</div>";
+      wrap.appendChild(row);
+    });
+  }
+
+  function miniBarsHTML(points, colorFn, labelFn) {
+    if (!points.length) return "";
+    var max = 0;
+    points.forEach(function (p) { if (p.value > max) max = p.value; });
+    if (max <= 0) max = 1;
+    var html = '<div class="mini-bars">';
+    points.forEach(function (p) {
+      var h = Math.max(4, Math.round((p.value / max) * 100));
+      var color = colorFn ? colorFn(p) : "var(--primary)";
+      html += '<div class="mini-bar" title="' + (labelFn ? labelFn(p) : p.value) + '">' +
+        '<div class="mini-bar-fill" style="height:' + h + "%;background:" + color + '"></div></div>';
+    });
+    html += "</div>";
+    return html;
+  }
+
+  function renderPerfEvolution() {
+    var wrap = $("perf-evolution");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    if (!hasEnoughEvolution()) {
+      perfEmpty(wrap, "Poucos dados ainda. Estude e simule em pelo menos 2 dias diferentes para ver sua evolução.");
+      return;
+    }
+
+    var days = timeEvolution(7);
+    var timeBlock = document.createElement("div");
+    timeBlock.className = "evo-block";
+    var avgMin = 0;
+    days.forEach(function (d) { avgMin += d.seconds; });
+    avgMin = Math.round((avgMin / 60) / days.length);
+    timeBlock.innerHTML = "<h3 class=\"sec-sub\">Tempo estudado (7 dias)</h3>" +
+      miniBarsHTML(days.map(function (d) { return { value: d.seconds, key: d.key }; }),
+        function () { return "var(--primary)"; },
+        function (p) { return p.key.split("-").reverse().join("/") + ": " + formatMinutes(p.value); }) +
+      '<div class="ps-sub">m\u00e9dia de ' + avgMin + " min/dia nos \u00faltimos 7 dias</div>";
+    wrap.appendChild(timeBlock);
+
+    var answers = answerEvolution();
+    if (answers.length >= 2) {
+      var ansBlock = document.createElement("div");
+      ansBlock.className = "evo-block";
+      ansBlock.innerHTML = "<h3 class=\"sec-sub\">Acerto por dia de estudo</h3>" +
+        miniBarsHTML(answers.map(function (a) { return { value: a.pct, key: a.key, total: a.total }; }),
+          function (p) { return p.value < 60 ? "var(--err)" : (p.value < 80 ? "var(--warn)" : "var(--ok)"); },
+          function (p) { return p.key.split("-").reverse().join("/") + ": " + p.value + "% (" + p.total + " questões)"; });
+      wrap.appendChild(ansBlock);
+    }
+  }
+
+  function renderPerfHistory() {
     var hist = $("perf-history");
+    if (!hist) return;
     hist.innerHTML = "";
     var key = todayKey();
     var days = [];
@@ -1191,8 +2086,11 @@
       div.textContent = d.split("-").reverse().join("/") + ": " + formatMinutes(sec);
       hist.appendChild(div);
     });
+  }
 
+  function renderPerfSyllabus() {
     var syl = $("perf-syllabus");
+    if (!syl) return;
     syl.innerHTML = "";
     var bankSummary = document.createElement("div");
     bankSummary.className = "muted small";
@@ -1287,6 +2185,512 @@
     alert("Videoaula salva!");
   }
 
+  // ---------------------------------------------------------------------------
+  // V0.6 - Sistema de Simulados (DMAE 2026 - Agente Comercial)
+  // ---------------------------------------------------------------------------
+
+  var _simQById = null;
+
+  function simQuestionById(id) {
+    if (!_simQById) {
+      _simQById = {};
+      (window.DATA_QUESTIONS || []).forEach(function (q) { _simQById[q.id] = q; });
+    }
+    return _simQById[id] || null;
+  }
+
+  function shuffleArray(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    }
+    return arr;
+  }
+
+  function optionOrder(n) {
+    var arr = [];
+    for (var i = 0; i < n; i++) arr.push(i);
+    return shuffleArray(arr);
+  }
+
+  function simuladoDistribution() {
+    var dist = {};
+    SUBJECT_ORDER.forEach(function (key) { dist[key] = SUBJECTS[key].q; });
+    return dist;
+  }
+
+  function simuladoMaxPoints() {
+    var sum = 0;
+    SUBJECT_ORDER.forEach(function (key) { sum += SUBJECTS[key].pts; });
+    return sum;
+  }
+
+  function simPointsPerQuestion(key) {
+    var cfg = SUBJECTS[key];
+    if (!cfg || !cfg.q) return 0;
+    return cfg.pts / cfg.q;
+  }
+
+  function canBuildSimulado() {
+    var dist = simuladoDistribution();
+    for (var i = 0; i < SUBJECT_ORDER.length; i++) {
+      var key = SUBJECT_ORDER[i];
+      var count = (window.DATA_QUESTIONS || []).filter(function (q) { return q.subject === key; }).length;
+      if (count < dist[key]) return false;
+    }
+    return true;
+  }
+
+  function generateSimulado() {
+    var dist = simuladoDistribution();
+    var items = [];
+    SUBJECT_ORDER.forEach(function (key) {
+      var pool = (window.DATA_QUESTIONS || []).filter(function (q) { return q.subject === key; });
+      shuffleArray(pool);
+      pool.slice(0, dist[key]).forEach(function (q) {
+        items.push({
+          qid: q.id,
+          subject: key,
+          order: optionOrder(q.options.length),
+          chosen: null
+        });
+      });
+    });
+    return {
+      id: "sim-" + Date.now(),
+      createdAt: Date.now(),
+      startedAt: Date.now(),
+      current: 0,
+      items: items
+    };
+  }
+
+  function scoreSimulado(sim) {
+    var bySubject = {};
+    SUBJECT_ORDER.forEach(function (key) {
+      bySubject[key] = { ok: 0, wrong: 0, total: 0, points: 0, max: SUBJECTS[key].pts };
+    });
+    var correct = 0, wrong = 0, blank = 0, points = 0;
+    sim.items.forEach(function (it) {
+      var q = simQuestionById(it.qid);
+      var st = bySubject[it.subject];
+      if (!q || !st) return;
+      var per = simPointsPerQuestion(it.subject);
+      st.total++;
+      if (it.chosen === null || it.chosen === undefined) { blank++; return; }
+      if (it.chosen === q.answer) {
+        correct++;
+        points += per;
+        st.ok++;
+        st.points += per;
+      } else {
+        wrong++;
+        st.wrong++;
+      }
+    });
+    var zeradas = SUBJECT_ORDER.filter(function (key) {
+      return bySubject[key].total > 0 && bySubject[key].ok === 0;
+    });
+    var total = sim.items.length;
+    var pct = total ? Math.round((correct / total) * 100) : 0;
+    var approved = points >= SIMULADO_PASS_POINTS && zeradas.length === 0;
+    return {
+      id: sim.id,
+      ts: Date.now(),
+      startedAt: sim.startedAt,
+      points: points,
+      maxPoints: simuladoMaxPoints(),
+      pct: pct,
+      correct: correct,
+      wrong: wrong,
+      blank: blank,
+      total: total,
+      bySubject: bySubject,
+      zeradas: zeradas,
+      zerouAlguma: zeradas.length > 0,
+      approved: approved,
+      durationSec: sim.startedAt ? Math.round((Date.now() - sim.startedAt) / 1000) : 0,
+      items: sim.items.map(function (it) {
+        return { qid: it.qid, chosen: it.chosen, subject: it.subject };
+      })
+    };
+  }
+
+  function setSimVisible(el, visible) {
+    if (!el) return;
+    el.classList.toggle("hidden", !visible);
+  }
+
+  function startSimTimer() {
+    if (simTimerId) { clearInterval(simTimerId); simTimerId = null; }
+    var sim = state.activeSimulado;
+    if (!sim) return;
+    function update() {
+      var el = $("sim-timer");
+      if (!el) return;
+      var sec = Math.floor((Date.now() - (sim.startedAt || Date.now())) / 1000);
+      el.textContent = formatClock(sec);
+    }
+    update();
+    simTimerId = setInterval(update, 1000);
+  }
+
+  function renderSimuladoSetup() {
+    var info = $("sim-bank-info");
+    if (info) {
+      info.textContent = "Banco atual: " + totalBankSize() + " questões. Nenhuma questão se repete dentro do mesmo simulado.";
+    }
+    var btn = $("simulado-new");
+    if (btn) btn.disabled = !canBuildSimulado();
+  }
+
+  function renderSimulado() {
+    var setup = $("simulado-setup");
+    var run = $("simulado-run");
+    var resultWrap = $("simulado-result");
+    if (!setup || !run || !resultWrap) return;
+    renderSimuladoSetup();
+    renderSimuladoHistory();
+
+    if (lastSimResult) {
+      setSimVisible(setup, false);
+      setSimVisible(run, false);
+      setSimVisible(resultWrap, true);
+      renderSimuladoResult(lastSimResult);
+      return;
+    }
+    if (state.activeSimulado) {
+      setSimVisible(setup, false);
+      setSimVisible(run, true);
+      setSimVisible(resultWrap, false);
+      renderSimuladoRun();
+      startSimTimer();
+      return;
+    }
+    setSimVisible(setup, true);
+    setSimVisible(run, false);
+    setSimVisible(resultWrap, false);
+  }
+
+  function renderSimuladoRun() {
+    var sim = state.activeSimulado;
+    if (!sim) return;
+    if (!sim.items || !sim.items.length) {
+      state.activeSimulado = null;
+      saveState();
+      renderSimulado();
+      return;
+    }
+    if (sim.current < 0) sim.current = 0;
+    if (sim.current >= sim.items.length) sim.current = sim.items.length - 1;
+
+    var idx = sim.current;
+    var item = sim.items[idx];
+    var q = simQuestionById(item.qid);
+    if (!q) {
+      sim.current = Math.min(sim.items.length - 1, idx + 1);
+      renderSimuladoRun();
+      return;
+    }
+    var cfg = SUBJECTS[item.subject] || SUBJECTS[q.subject];
+
+    $("sim-progress").textContent = (idx + 1) + "/" + sim.items.length;
+    var bar = $("sim-bar");
+    if (bar) bar.style.width = Math.round(((idx + 1) / sim.items.length) * 100) + "%";
+    var subjTag = $("sim-subject-tag");
+    if (subjTag) {
+      subjTag.textContent = cfg.short;
+      subjTag.style.color = cfg.color;
+      subjTag.style.borderColor = cfg.color;
+    }
+    var topicTag = $("sim-topic-tag");
+    if (topicTag) topicTag.textContent = questionNodeLabel(q);
+
+    var html = '<p class="q-statement">' + q.statement + "</p>";
+    html += '<div class="options">';
+    item.order.forEach(function (orig, pos) {
+      var cls = "option";
+      if (item.chosen === orig) cls += " selected";
+      html += '<button class="' + cls + '" data-orig="' + orig + '">' +
+        '<span class="letter">' + String.fromCharCode(65 + pos) + "</span>" +
+        "<span>" + q.options[orig] + "</span></button>";
+    });
+    html += "</div>";
+    $("sim-question").innerHTML = html;
+
+    var opts = $("sim-question").querySelectorAll(".option");
+    for (var i = 0; i < opts.length; i++) {
+      opts[i].onclick = function (ev) {
+        chooseSimOption(parseInt(ev.currentTarget.getAttribute("data-orig"), 10));
+      };
+    }
+    $("sim-prev").disabled = idx === 0;
+    $("sim-next").disabled = idx === sim.items.length - 1;
+    renderSimMap(sim, idx);
+  }
+
+  function renderSimMap(sim, current) {
+    var wrap = $("sim-map");
+    if (!wrap) return;
+    var html = "";
+    sim.items.forEach(function (it, i) {
+      var cls = "";
+      if (it.chosen !== null && it.chosen !== undefined) cls += " answered";
+      if (i === current) cls += " current";
+      html += '<button type="button" class="' + cls.trim() + '" data-i="' + i + '">' + (i + 1) + "</button>";
+    });
+    wrap.innerHTML = html;
+    var btns = wrap.querySelectorAll("button");
+    for (var j = 0; j < btns.length; j++) {
+      btns[j].onclick = function (ev) {
+        sim.current = parseInt(ev.currentTarget.getAttribute("data-i"), 10);
+        saveState();
+        renderSimuladoRun();
+      };
+    }
+  }
+
+  function chooseSimOption(orig) {
+    var sim = state.activeSimulado;
+    if (!sim) return;
+    sim.items[sim.current].chosen = orig;
+    saveState();
+    renderSimuladoRun();
+  }
+
+  function moveSimQuestion(delta) {
+    var sim = state.activeSimulado;
+    if (!sim) return;
+    sim.current = Math.min(sim.items.length - 1, Math.max(0, sim.current + delta));
+    saveState();
+    renderSimuladoRun();
+  }
+
+  function newSimulado() {
+    if (state.activeSimulado && !confirm("Já existe um simulado em andamento. Deseja abandoná-lo e criar um novo?")) return;
+    if (!canBuildSimulado()) {
+      alert("O banco de questões atual não possui questões suficientes para montar o simulado.");
+      return;
+    }
+    state.activeSimulado = generateSimulado();
+    lastSimResult = null;
+    saveState();
+    renderSimulado();
+    window.scrollTo(0, 0);
+  }
+
+  function abandonSimulado() {
+    if (!state.activeSimulado) return;
+    if (!confirm("Abandonar o simulado em andamento? As respostas deste simulado serão descartadas.")) return;
+    state.activeSimulado = null;
+    if (simTimerId) { clearInterval(simTimerId); simTimerId = null; }
+    saveState();
+    renderSimulado();
+  }
+
+  function finishSimulado() {
+    var sim = state.activeSimulado;
+    if (!sim || !sim.items.length) return;
+    var blank = sim.items.filter(function (it) {
+      return it.chosen === null || it.chosen === undefined;
+    }).length;
+    var msg = blank > 0
+      ? "Você deixou " + blank + " questão(ões) em branco. Deseja finalizar o simulado mesmo assim?"
+      : "Finalizar o simulado e ver o resultado?";
+    if (!confirm(msg)) return;
+
+    var record = scoreSimulado(sim);
+    state.simulados = state.simulados || [];
+    state.simulados.unshift(record);
+
+    sim.items.forEach(function (it) {
+      if (it.chosen === null || it.chosen === undefined) return;
+      if (state.answers[it.qid]) return;
+      var q = simQuestionById(it.qid);
+      if (!q) return;
+      state.answers[it.qid] = {
+        chosen: it.chosen,
+        correct: it.chosen === q.answer,
+        subject: q.subject,
+        topic: topicIdOfQuestion(q),
+        ts: Date.now()
+      };
+    });
+
+    state.activeSimulado = null;
+    if (simTimerId) { clearInterval(simTimerId); simTimerId = null; }
+    saveState();
+    lastSimResult = record;
+    renderSimulado();
+    renderPerformance();
+    renderHomeSubjects();
+    window.scrollTo(0, 0);
+  }
+
+  function simSubjectBreakdownHTML(rec) {
+    var html = "";
+    SUBJECT_ORDER.forEach(function (key) {
+      var cfg = SUBJECTS[key];
+      var st = (rec.bySubject && rec.bySubject[key]) || { ok: 0, total: 0, points: 0, max: cfg.pts };
+      var zeroed = st.total > 0 && st.ok === 0;
+      var pct = st.total ? Math.round((st.ok / st.total) * 100) : 0;
+      html += '<div class="sim-subject-row' + (zeroed ? " zeroed" : "") + '">' +
+        '<div class="ssr-head"><span>' + cfg.name + "</span><span>" + st.ok + "/" + st.total + " (" + pct + "%) - " +
+        st.points + "/" + (st.max || cfg.pts) + " pts" + (zeroed ? " - ZEROU" : "") + "</span></div>" +
+        '<div class="bar"><div class="bar-fill" style="width:' + pct + "%;background:" + cfg.color + '"></div></div>' +
+        "</div>";
+    });
+    return html;
+  }
+
+  function simGabaritoHTML(rec) {
+    var items = rec.items || [];
+    if (!items.length) return '<div class="empty">Sem questões registradas.</div>';
+    var html = '<div class="sim-gabarito">';
+    items.forEach(function (it, i) {
+      var q = simQuestionById(it.qid);
+      if (!q) return;
+      var cfg = SUBJECTS[it.subject] || SUBJECTS[q.subject];
+      var blank = it.chosen === null || it.chosen === undefined;
+      var correct = !blank && it.chosen === q.answer;
+      var cls = blank ? "blank" : (correct ? "correct" : "wrong");
+      var tag = blank ? "em branco" : (correct ? "acertou" : "errou");
+      html += '<div class="gab-item ' + cls + '">' +
+        '<div class="gab-head"><span>' + (i + 1) + ". " + cfg.short + " - " + questionNodeLabel(q) + "</span>" +
+        '<span class="' + (correct ? "ok" : "err") + '">' + tag + "</span></div>" +
+        "<div>" + q.statement + "</div>" +
+        '<div class="gab-answer ok">Correta: ' + q.options[q.answer] + "</div>" +
+        (blank || correct ? "" : '<div class="gab-answer bad">Sua resposta: ' + q.options[it.chosen] + "</div>") +
+        "</div>";
+    });
+    html += "</div>";
+    return html;
+  }
+
+  function renderSimuladoResult(rec) {
+    var wrap = $("simulado-result");
+    if (!wrap) return;
+    var verdict = rec.approved ? "APROVADO NO SIMULADO" : "NÃO ATINGIU OS CRITÉRIOS";
+    var verdictCls = rec.approved ? "ok" : "err";
+    var zeradasText = rec.zeradas && rec.zeradas.length
+      ? rec.zeradas.map(function (k) { return SUBJECTS[k].short; }).join(", ")
+      : "nenhuma";
+    var passPts = rec.points >= SIMULADO_PASS_POINTS;
+
+    var html = '<div class="card">' +
+      '<div class="sim-verdict ' + verdictCls + '">' + verdict + "</div>" +
+      '<div class="sim-stat-grid">' +
+      '<div class="stat-card"><strong>' + rec.points + '</strong><span>de ' + rec.maxPoints + " pontos</span></div>" +
+      '<div class="stat-card"><strong>' + rec.pct + '%</strong><span>de acertos</span></div>' +
+      '<div class="stat-card ok"><strong>' + rec.correct + '</strong><span>acertos</span></div>' +
+      '<div class="stat-card err"><strong>' + rec.wrong + '</strong><span>erros</span></div>' +
+      "</div>" +
+      '<ul class="sim-criteria">' +
+      '<li><span>Mínimo de ' + SIMULADO_PASS_POINTS + ' pontos</span><span class="' + (passPts ? "yes" : "no") + '">' +
+      rec.points + "/" + SIMULADO_PASS_POINTS + " - " + (passPts ? "OK" : "NÃO") + "</span></li>" +
+      '<li><span>Não zerar nenhuma matéria</span><span class="' + (rec.zerouAlguma ? "no" : "yes") + '">' +
+      (rec.zerouAlguma ? "ZEROU: " + zeradasText : "OK") + "</span></li>" +
+      '<li><span>Questões em branco</span><span>' + (rec.blank || 0) + "</span></li>" +
+      '<li><span>Tempo de prova</span><span>' + formatClock(rec.durationSec || 0) + "</span></li>" +
+      "</ul>" +
+      '<button class="btn primary block" id="sim-result-restart">Novo simulado</button>' +
+      '<button class="btn ghost block" id="sim-result-close">Fechar resultado</button>' +
+      "</div>" +
+      '<div class="card"><h2>Desempenho por matéria</h2>' + simSubjectBreakdownHTML(rec) + "</div>" +
+      '<div class="card"><h2>Gabarito</h2>' + simGabaritoHTML(rec) + "</div>";
+
+    wrap.innerHTML = html;
+    $("sim-result-restart").onclick = function () { lastSimResult = null; newSimulado(); };
+    $("sim-result-close").onclick = function () { lastSimResult = null; renderSimulado(); };
+  }
+
+  function renderSimuladoHistory() {
+    var wrap = $("simulado-history");
+    if (!wrap) return;
+    var list = state.simulados || [];
+    wrap.innerHTML = "";
+    if (!list.length) {
+      wrap.innerHTML = '<div class="empty">Nenhum simulado finalizado ainda. Toque em "Novo simulado" para começar.</div>';
+      return;
+    }
+    list.forEach(function (rec) {
+      var d = new Date(rec.ts);
+      var dateText = pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + "/" + d.getFullYear() + " " +
+        pad(d.getHours()) + ":" + pad(d.getMinutes());
+      var badge = rec.approved
+        ? '<span class="sim-hist-badge ok">Aprovado</span>'
+        : '<span class="sim-hist-badge err">Não passou</span>';
+      var el = document.createElement("details");
+      el.className = "sim-hist-item";
+      var summary = document.createElement("summary");
+      summary.innerHTML = '<div class="sim-hist-head"><div><strong>' + rec.points + "/" + rec.maxPoints + " pts</strong> - " +
+        rec.pct + "% (" + rec.correct + " acertos, " + rec.wrong + " erros)</div>" + badge + "</div>" +
+        '<div class="q-progress" style="margin-top:4px">' + dateText +
+        (rec.zerouAlguma ? " - zerou " + rec.zeradas.length + " matéria(s)" : "") + "</div>";
+      var body = document.createElement("div");
+      body.className = "sim-hist-body";
+      body.innerHTML = simSubjectBreakdownHTML(rec) + '<div class="sec-sub">Gabarito</div>' + simGabaritoHTML(rec);
+      el.appendChild(summary);
+      el.appendChild(body);
+      wrap.appendChild(el);
+    });
+  }
+
+  function clearSimuladoHistory() {
+    if (!(state.simulados || []).length) return;
+    if (!confirm("Apagar todo o histórico de simulados?")) return;
+    state.simulados = [];
+    saveState();
+    renderSimuladoHistory();
+    renderPerformance();
+  }
+
+  function renderPerformanceSimulados() {
+    var wrap = $("perf-simulados");
+    if (!wrap) return;
+    var stats = simuladoStats();
+    wrap.innerHTML = "";
+    if (!stats.count) {
+      wrap.innerHTML = '<div class="empty">Nenhum simulado realizado. Acesse a aba Simulado para começar.</div>';
+      return;
+    }
+    var grid = document.createElement("div");
+    grid.className = "sim-stat-grid";
+    grid.innerHTML =
+      '<div class="stat-card"><strong>' + stats.count + "</strong><span>simulados</span></div>" +
+      '<div class="stat-card ok"><strong>' + stats.best.points + "/" + stats.best.maxPoints + "</strong><span>melhor nota (" + stats.best.pct + "%)</span></div>" +
+      '<div class="stat-card"><strong>' + stats.last.points + "/" + stats.last.maxPoints + "</strong><span>\u00faltima nota (" + stats.last.pct + "%)</span></div>" +
+      '<div class="stat-card"><strong>' + stats.averagePoints + "</strong><span>m\u00e9dia de pontos</span></div>" +
+      '<div class="stat-card"><strong>' + stats.averagePct + "%</strong><span>m\u00e9dia de acertos</span></div>" +
+      '<div class="stat-card ok"><strong>' + stats.approvalRate + "%</strong><span>aprova\u00e7\u00e3o (" + stats.approved + "/" + stats.count + ")</span></div>";
+    wrap.appendChild(grid);
+
+    var evo = document.createElement("div");
+    evo.className = "evo-block";
+    evo.innerHTML = "<h3 class=\"sec-sub\">Evolu\u00e7\u00e3o da nota</h3>" +
+      miniBarsHTML(stats.series.map(function (s) { return { value: s.points, ts: s.ts, max: s.maxPoints, approved: s.approved }; }),
+        function (p) { return p.approved ? "var(--ok)" : (p.value >= SIMULADO_PASS_POINTS ? "var(--warn)" : "var(--err)"); },
+        function (p) {
+          var d = new Date(p.ts);
+          return pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + ": " + p.value + "/" + p.max + " pts";
+        });
+    wrap.appendChild(evo);
+
+    var list = (state.simulados || []).slice().reverse().slice(0, 5);
+    list.forEach(function (rec) {
+      var d = new Date(rec.ts);
+      var pct = rec.maxPoints ? Math.round((rec.points / rec.maxPoints) * 100) : 0;
+      var row = document.createElement("div");
+      row.className = "perf-subject";
+      row.innerHTML = '<div class="ps-head"><span>' + pad(d.getDate()) + "/" + pad(d.getMonth() + 1) + " - " +
+        (rec.approved ? "aprovado" : "n\u00e3o passou") + (rec.zerouAlguma ? " - zerou mat\u00e9ria" : "") +
+        "</span><span>" + rec.points + "/" + rec.maxPoints + " pts - " + rec.pct + "%</span></div>" +
+        '<div class="bar"><div class="bar-fill" style="width:' + pct + "%;background:" +
+        (rec.approved ? "var(--ok)" : "var(--err)") + '"></div></div>';
+      wrap.appendChild(row);
+    });
+  }
+
   function bindEvents() {
     var navs = document.querySelectorAll(".nav-btn");
     for (var i = 0; i < navs.length; i++) {
@@ -1313,6 +2717,12 @@
       renderHomeSubjects();
     };
     $("progress-reset").onclick = resetProgress;
+    $("simulado-new").onclick = newSimulado;
+    $("sim-prev").onclick = function () { moveSimQuestion(-1); };
+    $("sim-next").onclick = function () { moveSimQuestion(1); };
+    $("sim-finish").onclick = finishSimulado;
+    $("sim-abandon").onclick = abandonSimulado;
+    $("simulado-clear-history").onclick = clearSimuladoHistory;
     document.addEventListener("visibilitychange", function () {
       if (document.hidden) {
         saveState();
@@ -1350,6 +2760,34 @@
       navigator.serviceWorker.register("service-worker.js").catch(function () {});
     });
   }
+
+  window.__DMAE_COVERAGE__ = {
+    engine: coverageEngine,
+    daysUntilExam: daysUntilExam,
+    estimatedTopicMinutes: estimatedTopicMinutes,
+    priorityScore: priorityScore,
+    rankedTopics: rankedTopics,
+    buildPlan: buildPlan,
+    itemStatus: itemStatus,
+    studyPhase: studyPhase,
+    coverageStatus: coverageStatus,
+    formatMinutes: formatMinutes,
+    formatSignedMinutes: formatSignedMinutes
+  };
+
+  window.__DMAE_ANALYTICS__ = {
+    overview: performanceOverview,
+    subjects: subjectPerformance,
+    worstTopics: worstTopics,
+    unstudiedTopics: unstudiedTopics,
+    priorityBreakdown: priorityBreakdown,
+    priorityTopics: priorityTopics,
+    simuladoStats: simuladoStats,
+    timeEvolution: timeEvolution,
+    answerEvolution: answerEvolution,
+    hasEnoughEvolution: hasEnoughEvolution,
+    totalStudiedTopics: totalStudiedTopics
+  };
 
   document.addEventListener("DOMContentLoaded", init);
 })();

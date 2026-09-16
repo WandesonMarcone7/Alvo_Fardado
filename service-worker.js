@@ -1,4 +1,4 @@
-var CACHE_NAME = "dmae2026-v05";
+var CACHE_NAME = "dmae2026-v10";
 var APP_SHELL = [
   "./",
   "./index.html",
@@ -12,6 +12,7 @@ var APP_SHELL = [
   "./data/questions-gerais.js",
   "./data/questions-legislacao.js",
   "./data/content.js",
+  "./data/videoaulas.js",
   "./data/ai-config.js",
   "./data/videos.js",
   "./data/syllabus.js",
