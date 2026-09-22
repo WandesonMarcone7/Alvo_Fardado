@@ -229,19 +229,9 @@ if (!jsdom) {
 
   nav("videos");
   ok("videoaulas renderizam 5 materias", w.document.querySelectorAll("#videos-list .video-group").length === 5);
-  w.document.getElementById("video-subject").value = "especificos";
-  w.document.getElementById("video-topic").value = "Assunto de teste V0.8";
-  w.document.getElementById("video-url").value = "https://youtu.be/abc123";
-  w.document.getElementById("video-add").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
-  function videoLinks() {
-    return Array.prototype.slice.call(w.document.querySelectorAll("#videos-list .video-link a"))
-      .filter(function (a) { return a.textContent === "Assunto de teste V0.8"; });
-  }
-  ok("videoaula adicionada aparece na lista", videoLinks().length === 1);
-  if (videoLinks().length) {
-    videoLinks()[0].parentNode.querySelector("button").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
-  }
-  ok("videoaula removida sai da lista", videoLinks().length === 0);
+  ok("videosDMAE tem 100 entradas", (w.videosDMAE || []).length === 100, "n=" + (w.videosDMAE || []).length);
+  ok("tela de videos nao usa formulario de cadastro", !w.document.getElementById("video-add") && !w.document.getElementById("video-form-card"));
+  ok("videoaulas oficiais aparecem sem localStorage", w.document.querySelectorAll("#videos-list .video-mini").length >= 89);
 
   ok("navegacao inferior com 8 botoes", w.document.querySelectorAll(".bottom-nav .nav-btn").length === 8);
   var css = read("style.css");
