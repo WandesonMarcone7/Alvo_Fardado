@@ -815,6 +815,50 @@
 
   function $(id) { return document.getElementById(id); }
 
+  function isYoutubeHost(host) {
+    host = String(host || "").toLowerCase();
+    return host === "youtube.com" || host === "www.youtube.com" || host === "m.youtube.com" ||
+      host === "youtu.be" || host === "www.youtu.be" ||
+      host === "youtube-nocookie.com" || host === "www.youtube-nocookie.com" ||
+      host === "music.youtube.com";
+  }
+
+  function safeUserVideoUrl(raw) {
+    if (!raw || typeof raw !== "string") return "";
+    var trimmed = raw.trim();
+    if (!trimmed) return "";
+    try {
+      var parsed = new URL(trimmed);
+      if (parsed.protocol !== "https:") return "";
+      if (!isYoutubeHost(parsed.hostname)) return "";
+      return parsed.href;
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function userVideoLabel(v) {
+    var title = v && v.title;
+    if (title && typeof title === "string" && title.trim()) return title.trim();
+    return (v && v.url) ? String(v.url) : "";
+  }
+
+  function createUserVideoAnchor(v, className) {
+    var a = document.createElement("a");
+    if (className) a.className = className;
+    var href = safeUserVideoUrl(v && v.url);
+    if (href) {
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    } else {
+      a.href = "#";
+      a.addEventListener("click", function (ev) { ev.preventDefault(); });
+    }
+    a.textContent = userVideoLabel(v);
+    return a;
+  }
+
   function pad(n) { return (n < 10 ? "0" : "") + n; }
 
   function dateKey(date) {
@@ -1329,12 +1373,6 @@
     } else {
       html += '<p class="muted small">Nenhuma videoaula selecionada para este assunto.</p>';
     }
-    if (videos.length) {
-      html += '<h3 class="sec-sub">Minhas videoaulas</h3>';
-      videos.forEach(function (v) {
-        html += '<a class="video-mini" href="' + v.url + '" target="_blank" rel="noopener">' + (v.title || v.url) + "</a>";
-      });
-    }
     html += "</div>";
 
     html += '<div class="card"><h2>Meu progresso neste assunto</h2>' +
@@ -1364,6 +1402,24 @@
     }
     html += "</div>";
     wrap.innerHTML = html;
+
+    if (videos.length) {
+      var videoCard = null;
+      var cards = wrap.querySelectorAll(".card");
+      for (var c = 0; c < cards.length; c++) {
+        var h2 = cards[c].querySelector("h2");
+        if (h2 && h2.textContent === "Videoaulas") { videoCard = cards[c]; break; }
+      }
+      if (videoCard) {
+        var mineHead = document.createElement("h3");
+        mineHead.className = "sec-sub";
+        mineHead.textContent = "Minhas videoaulas";
+        videoCard.appendChild(mineHead);
+        videos.forEach(function (v) {
+          videoCard.appendChild(createUserVideoAnchor(v, "video-mini"));
+        });
+      }
+    }
 
     var checks = wrap.querySelectorAll("input[type=checkbox]");
     for (var i = 0; i < checks.length; i++) {
@@ -2111,49 +2167,78 @@
     });
   }
 
+  function videoTopicsBySubject() {
+    var bySubject = {};
+    function add(subject, topic) {
+      if (!SUBJECTS[subject] || !topic) return;
+      if (!bySubject[subject]) bySubject[subject] = [];
+      if (bySubject[subject].indexOf(topic) < 0) bySubject[subject].push(topic);
+    }
+    (window.DATA_VIDEOS || []).forEach(function (group) {
+      (group.topics || []).forEach(function (topic) { add(group.subject, topic); });
+    });
+    state.videos.forEach(function (v) { add(v.subject, v.topic); });
+    return bySubject;
+  }
+
   function renderVideos() {
     var wrap = $("videos-list");
     wrap.innerHTML = "";
-    (window.DATA_VIDEOS || []).forEach(function (group) {
-      var s = SUBJECTS[group.subject];
-      if (!s) return;
+    var bySubject = videoTopicsBySubject();
+    SUBJECT_ORDER.forEach(function (key) {
+      var topics = bySubject[key] || [];
+      if (!topics.length) return;
+      var s = SUBJECTS[key];
       var block = document.createElement("div");
       block.className = "video-group";
-      var html = "<h3 style='color:" + s.color + "'>" + s.name + "</h3><div class='video-topics'>";
-      (group.topics || []).forEach(function (topic) {
+      var heading = document.createElement("h3");
+      heading.style.color = s.color;
+      heading.textContent = s.name;
+      block.appendChild(heading);
+      var topicsWrap = document.createElement("div");
+      topicsWrap.className = "video-topics";
+      topics.forEach(function (topic) {
         var links = state.videos.filter(function (v) {
-          return v.subject === group.subject && v.topic === topic;
+          return v.subject === key && v.topic === topic;
         });
-        html += '<div class="video-topic"><div class="vt-name">Assunto: ' + topic + "</div>";
+        var topicBox = document.createElement("div");
+        topicBox.className = "video-topic";
+        var nameEl = document.createElement("div");
+        nameEl.className = "vt-name";
+        nameEl.textContent = "Assunto: " + topic;
+        topicBox.appendChild(nameEl);
         if (links.length) {
-          html += '<div class="video-links">';
-          links.forEach(function (v, i) {
-            html += '<div class="video-link" data-subject="' + v.subject + '" data-topic="' + topic + '" data-url="' + v.url + '">' +
-              '<a href="' + v.url + '" target="_blank" rel="noopener">' + (v.title || v.url) + "</a>" +
-              '<button type="button" title="Remover">x</button></div>';
+          var linksWrap = document.createElement("div");
+          linksWrap.className = "video-links";
+          links.forEach(function (v) {
+            var row = document.createElement("div");
+            row.className = "video-link";
+            row.appendChild(createUserVideoAnchor(v));
+            var removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.title = "Remover";
+            removeBtn.textContent = "x";
+            removeBtn.onclick = function () {
+              state.videos = state.videos.filter(function (item) {
+                return !(item.subject === v.subject && item.topic === v.topic && item.url === v.url);
+              });
+              saveState();
+              renderVideos();
+            };
+            row.appendChild(removeBtn);
+            linksWrap.appendChild(row);
           });
-          html += "</div>";
+          topicBox.appendChild(linksWrap);
         } else {
-          html += '<div class="vt-name" style="margin-top:6px">Nenhuma videoaula cadastrada ainda.</div>';
+          var empty = document.createElement("div");
+          empty.className = "vt-name";
+          empty.style.marginTop = "6px";
+          empty.textContent = "Nenhuma videoaula cadastrada ainda.";
+          topicBox.appendChild(empty);
         }
-        html += "</div>";
+        topicsWrap.appendChild(topicBox);
       });
-      html += "</div>";
-      block.innerHTML = html;
-      var removeButtons = block.querySelectorAll(".video-link button");
-      for (var i = 0; i < removeButtons.length; i++) {
-        removeButtons[i].onclick = function (ev) {
-          var box = ev.currentTarget.parentNode;
-          var sub = box.getAttribute("data-subject");
-          var top = box.getAttribute("data-topic");
-          var url = box.getAttribute("data-url");
-          state.videos = state.videos.filter(function (v) {
-            return !(v.subject === sub && v.topic === top && v.url === url);
-          });
-          saveState();
-          renderVideos();
-        };
-      }
+      block.appendChild(topicsWrap);
       wrap.appendChild(block);
     });
   }
@@ -2177,7 +2262,12 @@
       alert("Preencha o assunto e o link da videoaula.");
       return;
     }
-    state.videos.push({ subject: subject, topic: topic, url: url, title: topic });
+    var safeUrl = safeUserVideoUrl(url);
+    if (!safeUrl) {
+      alert("Informe um link https do YouTube.");
+      return;
+    }
+    state.videos.push({ subject: subject, topic: topic, url: safeUrl, title: topic });
     saveState();
     $("video-topic").value = "";
     $("video-url").value = "";
