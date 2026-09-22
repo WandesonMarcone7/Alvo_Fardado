@@ -2169,22 +2169,51 @@
 
   function videoTopicsBySubject() {
     var bySubject = {};
-    function add(subject, topic) {
-      if (!SUBJECTS[subject] || !topic) return;
-      if (!bySubject[subject]) bySubject[subject] = [];
-      if (bySubject[subject].indexOf(topic) < 0) bySubject[subject].push(topic);
-    }
-    (window.DATA_VIDEOS || []).forEach(function (group) {
-      (group.topics || []).forEach(function (topic) { add(group.subject, topic); });
+    SUBJECT_ORDER.forEach(function (key) { bySubject[key] = []; });
+    allTopics().forEach(function (entry) {
+      var key = entry.subject.id;
+      if (!bySubject[key]) bySubject[key] = [];
+      bySubject[key].push({ id: entry.topic.id, name: entry.topic.name });
     });
-    state.videos.forEach(function (v) { add(v.subject, v.topic); });
+    state.videos.forEach(function (v) {
+      if (!SUBJECTS[v.subject] || !v.topic) return;
+      if (!bySubject[v.subject]) bySubject[v.subject] = [];
+      var list = bySubject[v.subject];
+      var exists = list.some(function (t) {
+        return t.name === v.topic || (v.topicId && t.id === v.topicId);
+      });
+      if (!exists) list.push({ id: v.topicId || null, name: v.topic });
+    });
     return bySubject;
+  }
+
+  function appendOfficialVideoAnchor(parent, v) {
+    var a = document.createElement("a");
+    a.className = "video-mini";
+    if (v.url) {
+      a.href = v.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    } else {
+      a.href = "#";
+      a.addEventListener("click", function (ev) { ev.preventDefault(); });
+    }
+    var titleEl = document.createElement("strong");
+    titleEl.textContent = v.titulo || v.assunto || "Videoaula";
+    a.appendChild(titleEl);
+    var meta = document.createElement("span");
+    meta.className = "video-meta";
+    var tipoLabel = v.tipo === "complementar" ? "Complementar" : "Principal";
+    meta.textContent = "Oficial - " + tipoLabel + (v.canal ? " - " + v.canal : "");
+    a.appendChild(meta);
+    parent.appendChild(a);
   }
 
   function renderVideos() {
     var wrap = $("videos-list");
     wrap.innerHTML = "";
     var bySubject = videoTopicsBySubject();
+    var officialAll = window.DATA_VIDEOAULAS || [];
     SUBJECT_ORDER.forEach(function (key) {
       var topics = bySubject[key] || [];
       if (!topics.length) return;
@@ -2198,19 +2227,39 @@
       var topicsWrap = document.createElement("div");
       topicsWrap.className = "video-topics";
       topics.forEach(function (topic) {
-        var links = state.videos.filter(function (v) {
-          return v.subject === key && v.topic === topic;
+        var official = officialAll.filter(function (v) {
+          return topic.id && v.topicId === topic.id;
+        });
+        var mainOfficial = official.filter(function (v) { return !v.semVideo && v.tipo === "principal"; });
+        var extraOfficial = official.filter(function (v) { return !v.semVideo && v.tipo === "complementar"; });
+        var missingOfficial = official.length > 0 && official.every(function (v) { return v.semVideo; });
+        var userLinks = state.videos.filter(function (v) {
+          return v.subject === key && (v.topic === topic.name || (topic.id && v.topicId === topic.id));
         });
         var topicBox = document.createElement("div");
         topicBox.className = "video-topic";
         var nameEl = document.createElement("div");
         nameEl.className = "vt-name";
-        nameEl.textContent = "Assunto: " + topic;
+        nameEl.textContent = "Assunto: " + topic.name;
         topicBox.appendChild(nameEl);
-        if (links.length) {
+        if (mainOfficial.length || extraOfficial.length) {
+          mainOfficial.forEach(function (v) { appendOfficialVideoAnchor(topicBox, v); });
+          extraOfficial.forEach(function (v) { appendOfficialVideoAnchor(topicBox, v); });
+        } else if (missingOfficial) {
+          var notice = document.createElement("div");
+          notice.className = "notice";
+          notice.textContent = official[0].motivo || "Sem videoaula oficial para este assunto.";
+          topicBox.appendChild(notice);
+        }
+        if (userLinks.length) {
+          var mineHead = document.createElement("div");
+          mineHead.className = "vt-name";
+          mineHead.style.marginTop = "6px";
+          mineHead.textContent = "Minhas videoaulas";
+          topicBox.appendChild(mineHead);
           var linksWrap = document.createElement("div");
           linksWrap.className = "video-links";
-          links.forEach(function (v) {
+          userLinks.forEach(function (v) {
             var row = document.createElement("div");
             row.className = "video-link";
             row.appendChild(createUserVideoAnchor(v));
@@ -2229,7 +2278,7 @@
             linksWrap.appendChild(row);
           });
           topicBox.appendChild(linksWrap);
-        } else {
+        } else if (!mainOfficial.length && !extraOfficial.length && !missingOfficial) {
           var empty = document.createElement("div");
           empty.className = "vt-name";
           empty.style.marginTop = "6px";
