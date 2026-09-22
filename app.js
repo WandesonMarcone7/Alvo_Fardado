@@ -2167,79 +2167,161 @@
     });
   }
 
-  function materiaColor(materia) {
-    if (materia === "Língua Portuguesa") return SUBJECTS.portugues.color;
-    for (var i = 0; i < SUBJECT_ORDER.length; i++) {
-      var key = SUBJECT_ORDER[i];
-      if (SUBJECTS[key].name === materia) return SUBJECTS[key].color;
+  function videoTopicsBySubject() {
+    var bySubject = {};
+    SUBJECT_ORDER.forEach(function (key) { bySubject[key] = []; });
+    allTopics().forEach(function (entry) {
+      var key = entry.subject.id;
+      if (!bySubject[key]) bySubject[key] = [];
+      bySubject[key].push({ id: entry.topic.id, name: entry.topic.name });
+    });
+    state.videos.forEach(function (v) {
+      if (!SUBJECTS[v.subject] || !v.topic) return;
+      if (!bySubject[v.subject]) bySubject[v.subject] = [];
+      var list = bySubject[v.subject];
+      var exists = list.some(function (t) {
+        return t.name === v.topic || (v.topicId && t.id === v.topicId);
+      });
+      if (!exists) list.push({ id: v.topicId || null, name: v.topic });
+    });
+    return bySubject;
+  }
+
+  function appendOfficialVideoAnchor(parent, v) {
+    var a = document.createElement("a");
+    a.className = "video-mini";
+    if (v.url) {
+      a.href = v.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+    } else {
+      a.href = "#";
+      a.addEventListener("click", function (ev) { ev.preventDefault(); });
     }
-    return SUBJECTS.especificos.color;
+    var titleEl = document.createElement("strong");
+    titleEl.textContent = v.titulo || v.assunto || "Videoaula";
+    a.appendChild(titleEl);
+    var meta = document.createElement("span");
+    meta.className = "video-meta";
+    var tipoLabel = v.tipo === "complementar" ? "Complementar" : "Principal";
+    meta.textContent = "Oficial - " + tipoLabel + (v.canal ? " - " + v.canal : "");
+    a.appendChild(meta);
+    parent.appendChild(a);
   }
 
   function renderVideos() {
     var wrap = $("videos-list");
     wrap.innerHTML = "";
-    var list = window.videosDMAE || [];
-    if (!list.length) {
-      wrap.textContent = "";
-      var empty = document.createElement("div");
-      empty.className = "empty";
-      empty.textContent = "Nenhuma videoaula cadastrada.";
-      wrap.appendChild(empty);
-      return;
-    }
-    var order = [];
-    var byMateria = {};
-    list.forEach(function (v) {
-      var materia = v.materia || "Outros";
-      if (!byMateria[materia]) {
-        byMateria[materia] = [];
-        order.push(materia);
-      }
-      byMateria[materia].push(v);
-    });
-    order.forEach(function (materia) {
+    var bySubject = videoTopicsBySubject();
+    var officialAll = window.DATA_VIDEOAULAS || [];
+    SUBJECT_ORDER.forEach(function (key) {
+      var topics = bySubject[key] || [];
+      if (!topics.length) return;
+      var s = SUBJECTS[key];
       var block = document.createElement("div");
       block.className = "video-group";
       var heading = document.createElement("h3");
-      heading.style.color = materiaColor(materia);
-      heading.textContent = materia;
+      heading.style.color = s.color;
+      heading.textContent = s.name;
       block.appendChild(heading);
       var topicsWrap = document.createElement("div");
       topicsWrap.className = "video-topics";
-      var byAssunto = {};
-      var assuntoOrder = [];
-      byMateria[materia].forEach(function (v) {
-        var assunto = v.assunto || "Assunto";
-        if (!byAssunto[assunto]) {
-          byAssunto[assunto] = [];
-          assuntoOrder.push(assunto);
-        }
-        byAssunto[assunto].push(v);
-      });
-      assuntoOrder.forEach(function (assunto) {
+      topics.forEach(function (topic) {
+        var official = officialAll.filter(function (v) {
+          return topic.id && v.topicId === topic.id;
+        });
+        var mainOfficial = official.filter(function (v) { return !v.semVideo && v.tipo === "principal"; });
+        var extraOfficial = official.filter(function (v) { return !v.semVideo && v.tipo === "complementar"; });
+        var missingOfficial = official.length > 0 && official.every(function (v) { return v.semVideo; });
+        var userLinks = state.videos.filter(function (v) {
+          return v.subject === key && (v.topic === topic.name || (topic.id && v.topicId === topic.id));
+        });
         var topicBox = document.createElement("div");
         topicBox.className = "video-topic";
         var nameEl = document.createElement("div");
         nameEl.className = "vt-name";
-        nameEl.textContent = "Assunto: " + assunto;
+        nameEl.textContent = "Assunto: " + topic.name;
         topicBox.appendChild(nameEl);
-        byAssunto[assunto].forEach(function (v) {
-          var a = document.createElement("a");
-          a.className = "video-mini";
-          a.href = v.link || "#";
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          var titleEl = document.createElement("strong");
-          titleEl.textContent = v.assunto || "Videoaula";
-          a.appendChild(titleEl);
-          topicBox.appendChild(a);
-        });
+        if (mainOfficial.length || extraOfficial.length) {
+          mainOfficial.forEach(function (v) { appendOfficialVideoAnchor(topicBox, v); });
+          extraOfficial.forEach(function (v) { appendOfficialVideoAnchor(topicBox, v); });
+        } else if (missingOfficial) {
+          var notice = document.createElement("div");
+          notice.className = "notice";
+          notice.textContent = official[0].motivo || "Sem videoaula oficial para este assunto.";
+          topicBox.appendChild(notice);
+        }
+        if (userLinks.length) {
+          var mineHead = document.createElement("div");
+          mineHead.className = "vt-name";
+          mineHead.style.marginTop = "6px";
+          mineHead.textContent = "Minhas videoaulas";
+          topicBox.appendChild(mineHead);
+          var linksWrap = document.createElement("div");
+          linksWrap.className = "video-links";
+          userLinks.forEach(function (v) {
+            var row = document.createElement("div");
+            row.className = "video-link";
+            row.appendChild(createUserVideoAnchor(v));
+            var removeBtn = document.createElement("button");
+            removeBtn.type = "button";
+            removeBtn.title = "Remover";
+            removeBtn.textContent = "x";
+            removeBtn.onclick = function () {
+              state.videos = state.videos.filter(function (item) {
+                return !(item.subject === v.subject && item.topic === v.topic && item.url === v.url);
+              });
+              saveState();
+              renderVideos();
+            };
+            row.appendChild(removeBtn);
+            linksWrap.appendChild(row);
+          });
+          topicBox.appendChild(linksWrap);
+        } else if (!mainOfficial.length && !extraOfficial.length && !missingOfficial) {
+          var empty = document.createElement("div");
+          empty.className = "vt-name";
+          empty.style.marginTop = "6px";
+          empty.textContent = "Nenhuma videoaula cadastrada ainda.";
+          topicBox.appendChild(empty);
+        }
         topicsWrap.appendChild(topicBox);
       });
       block.appendChild(topicsWrap);
       wrap.appendChild(block);
     });
+  }
+
+  function populateVideoSubjects() {
+    var sel = $("video-subject");
+    sel.innerHTML = "";
+    SUBJECT_ORDER.forEach(function (key) {
+      var opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = SUBJECTS[key].name;
+      sel.appendChild(opt);
+    });
+  }
+
+  function addVideo() {
+    var subject = $("video-subject").value;
+    var topic = $("video-topic").value.trim();
+    var url = $("video-url").value.trim();
+    if (!topic || !url) {
+      alert("Preencha o assunto e o link da videoaula.");
+      return;
+    }
+    var safeUrl = safeUserVideoUrl(url);
+    if (!safeUrl) {
+      alert("Informe um link https do YouTube.");
+      return;
+    }
+    state.videos.push({ subject: subject, topic: topic, url: safeUrl, title: topic });
+    saveState();
+    $("video-topic").value = "";
+    $("video-url").value = "";
+    renderVideos();
+    alert("Videoaula salva!");
   }
 
   // ---------------------------------------------------------------------------
@@ -2765,6 +2847,7 @@
       renderQuestion();
     };
     $("question-shuffle").onclick = shuffleQuestions;
+    $("video-add").onclick = addVideo;
     $("perf-reset").onclick = function () {
       if (!confirm("Apagar todas as respostas registradas?")) return;
       state.answers = {};
@@ -2799,6 +2882,7 @@
     }
     $("countdown").textContent = countdownText();
     populateFilters();
+    populateVideoSubjects();
     bindEvents();
     renderHome();
     renderPlan();

@@ -231,8 +231,24 @@
 
   <section id="screen-videos" class="screen">
     <h1 class="screen-title">Videoaulas</h1>
-    <p class="muted small">Videoaulas oficiais cadastradas por matéria e assunto.</p>
+    <p class="muted small">Videoaulas oficiais já cadastradas para os 89 assuntos do edital. Use o formulário abaixo só se quiser guardar links seus.</p>
     <div id="videos-list"></div>
+    <div class="card" id="video-form-card">
+      <h2>Adicionar minha videoaula</h2>
+      <label class="field">
+        <span>Matéria</span>
+        <select id="video-subject"></select>
+      </label>
+      <label class="field">
+        <span>Assunto</span>
+        <input id="video-topic" type="text" placeholder="Ex.: Atendimento ao público">
+      </label>
+      <label class="field">
+        <span>Link do YouTube</span>
+        <input id="video-url" type="url" placeholder="https://www.youtube.com/watch?v=...">
+      </label>
+      <button id="video-add" class="btn primary block">Salvar videoaula</button>
+    </div>
   </section>
 
 </main>
