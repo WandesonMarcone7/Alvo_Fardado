@@ -1000,3 +1000,507 @@ window.DATA_VIDEOAULAS = [
     motivo: null
   }
 ];
+
+const videosDMAE = [
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Hidrômetro Classe I e padrão de instalação do DMAE",
+    link: "https://www.youtube.com/results?search_query=hidr%C3%B4metro%20classe%20metrol%C3%B3gica%20instala%C3%A7%C3%A3o%20padr%C3%A3o"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Funcionamento e leitura de hidrômetros",
+    link: "https://www.youtube.com/results?search_query=como%20ler%20hidr%C3%B4metro%20leitura%20de%20%C3%A1gua"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Registro de consumo",
+    link: "https://www.youtube.com/watch?v=dmae003"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Irregularidades, fraudes e adulterações",
+    link: "https://www.youtube.com/results?search_query=fraude%20hidr%C3%B4metro%20adultera%C3%A7%C3%A3o%20medi%C3%A7%C3%A3o"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Leitura, emissão e entrega de contas",
+    link: "https://www.youtube.com/results?search_query=conta%20de%20%C3%A1gua%20leitura%20consumo%20fatura"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Cálculo de consumo e conversão de volume",
+    link: "https://www.youtube.com/results?search_query=c%C3%A1lculo%20consumo%20de%20%C3%A1gua%20m3%20litros"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Estrutura tarifária",
+    link: "https://www.youtube.com/results?search_query=estrutura%20tarif%C3%A1ria%20%C3%A1gua%20esgoto%20categorias%20consumo"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Ligações clandestinas e fiscalização",
+    link: "https://www.youtube.com/results?search_query=liga%C3%A7%C3%A3o%20clandestina%20de%20%C3%A1gua%20fiscaliza%C3%A7%C3%A3o"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Lacres e padrão de instalação",
+    link: "https://www.youtube.com/watch?v=dmae009"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Cadastro de usuários e classificação de economias",
+    link: "https://www.youtube.com/watch?v=dmae010"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Informática básica aplicada",
+    link: "https://www.youtube.com/results?search_query=inform%C3%A1tica%20b%C3%A1sica%20planilhas%20fun%C3%A7%C3%B5es%20concurso"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Segurança do trabalho e EPI / NR-6",
+    link: "https://www.youtube.com/results?search_query=NR-6%20EPI%20seguran%C3%A7a%20do%20trabalho"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Segurança do trabalho e EPI / NR-6",
+    link: "https://www.youtube.com/results?search_query=NR-6%20EPI%20quest%C3%B5es%20concurso"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Portaria GM/MS nº 888/2021",
+    link: "https://www.youtube.com/results?search_query=Portaria%20888%202021%20potabilidade%20%C3%A1gua%20consumo%20humano"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Portaria MTP nº 2.175/2022 / NR-6",
+    link: "https://www.youtube.com/results?search_query=Portaria%202175%202022%20normas%20regulamentadoras"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Lei nº 9.605/1998",
+    link: "https://www.youtube.com/results?search_query=Lei%209605%2098%20crimes%20ambientais"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Lei nº 11.445/2007, atualizada pela Lei nº 14.026/2020",
+    link: "https://www.youtube.com/results?search_query=Lei%2011445%202007%20saneamento%20b%C3%A1sico%20diretrizes"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Lei nº 11.445/2007, atualizada pela Lei nº 14.026/2020",
+    link: "https://www.youtube.com/results?search_query=Lei%2014026%202020%20novo%20marco%20saneamento"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Informações oficiais do DMAE sobre hidrômetros",
+    link: "https://www.youtube.com/watch?v=dmae019"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Manual de Saneamento da FUNASA",
+    link: "https://www.youtube.com/results?search_query=Manual%20de%20saneamento%20FUNASA%20%C3%A1gua%20esgoto"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Portaria Inmetro nº 155/2022",
+    link: "https://www.youtube.com/results?search_query=metrologia%20legal%20hidr%C3%B4metro%20Inmetro"
+  },
+  {
+    materia: "Conhecimentos Específicos",
+    assunto: "Decreto nº 19.545/2021 — tarifas",
+    link: "https://www.youtube.com/watch?v=dmae022"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Interpretação de textos",
+    link: "https://www.youtube.com/results?search_query=interpreta%C3%A7%C3%A3o%20de%20texto%20concurso%20p%C3%BAblico"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Interpretação de textos",
+    link: "https://www.youtube.com/results?search_query=interpreta%C3%A7%C3%A3o%20de%20texto%20quest%C3%B5es%20resolvidas%20concurso"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Tipologia textual e gêneros textuais",
+    link: "https://www.youtube.com/results?search_query=tipologia%20textual%20g%C3%AAneros%20textuais%20concurso"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Sentido literal e figurado",
+    link: "https://www.youtube.com/results?search_query=sentido%20denotativo%20conotativo%20figurado"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Coesão e coerência",
+    link: "https://www.youtube.com/results?search_query=coes%C3%A3o%20coer%C3%AAncia%20textual%20concurso"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Concordância",
+    link: "https://www.youtube.com/results?search_query=concord%C3%A2ncia%20verbal%20nominal%20concurso"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Concordância",
+    link: "https://www.youtube.com/results?search_query=concord%C3%A2ncia%20verbal%20casos%20especiais%20concurso"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Crase",
+    link: "https://www.youtube.com/results?search_query=crase%20regras%20quando%20usar"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Crase",
+    link: "https://www.youtube.com/results?search_query=crase%20quest%C3%B5es%20concurso%20resolvidas"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Formação de palavras",
+    link: "https://www.youtube.com/results?search_query=forma%C3%A7%C3%A3o%20de%20palavras%20deriva%C3%A7%C3%A3o%20composi%C3%A7%C3%A3o"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Colocação pronominal",
+    link: "https://www.youtube.com/results?search_query=coloca%C3%A7%C3%A3o%20pronominal%20pr%C3%B3clise%20mes%C3%B3clise%20%C3%AAnclise"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Sinonímia, antonímia e polissemia",
+    link: "https://www.youtube.com/results?search_query=sinon%C3%ADmia%20anton%C3%ADmia%20polissemia"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Fonema, sílaba, acentuação e ortografia",
+    link: "https://www.youtube.com/results?search_query=acentua%C3%A7%C3%A3o%20ortografia%20regras%20concurso"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Pontuação",
+    link: "https://www.youtube.com/results?search_query=pontua%C3%A7%C3%A3o%20v%C3%ADrgula%20concurso"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Pontuação",
+    link: "https://www.youtube.com/results?search_query=pontua%C3%A7%C3%A3o%20quest%C3%B5es%20concurso%20resolvidas"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Classes de palavras e morfossintaxe",
+    link: "https://www.youtube.com/results?search_query=classes%20de%20palavras%20morfossintaxe%20concurso"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Verbos",
+    link: "https://www.youtube.com/results?search_query=verbos%20tempos%20modos%20vozes%20concurso"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Sintaxe",
+    link: "https://www.youtube.com/results?search_query=sintaxe%20termos%20da%20ora%C3%A7%C3%A3o%20concurso"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Coordenação e subordinação",
+    link: "https://www.youtube.com/results?search_query=coordena%C3%A7%C3%A3o%20subordina%C3%A7%C3%A3o%20ora%C3%A7%C3%B5es%20concurso"
+  },
+  {
+    materia: "Língua Portuguesa",
+    assunto: "Variação linguística",
+    link: "https://www.youtube.com/results?search_query=varia%C3%A7%C3%A3o%20lingu%C3%ADstica%20preconceito%20lingu%C3%ADstico"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Conjuntos",
+    link: "https://www.youtube.com/results?search_query=conjuntos%20uni%C3%A3o%20intersec%C3%A7%C3%A3o%20diagrama%20de%20Venn"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Números",
+    link: "https://www.youtube.com/results?search_query=conjuntos%20num%C3%A9ricos%20opera%C3%A7%C3%B5es%20concurso"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Intervalos",
+    link: "https://www.youtube.com/results?search_query=intervalos%20reais%20reta%20num%C3%A9rica"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Função afim",
+    link: "https://www.youtube.com/results?search_query=fun%C3%A7%C3%A3o%20afim%20primeiro%20grau%20gr%C3%A1fico"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Função quadrática",
+    link: "https://www.youtube.com/results?search_query=fun%C3%A7%C3%A3o%20quadr%C3%A1tica%20v%C3%A9rtice%20ra%C3%ADzes"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Função exponencial",
+    link: "https://www.youtube.com/results?search_query=fun%C3%A7%C3%A3o%20exponencial%20gr%C3%A1fico%20equa%C3%A7%C3%B5es"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Logaritmos",
+    link: "https://www.youtube.com/results?search_query=logaritmos%20propriedades%20concurso"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Trigonometria",
+    link: "https://www.youtube.com/results?search_query=trigonometria%20seno%20cosseno%20tangente"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Progressão aritmética",
+    link: "https://www.youtube.com/results?search_query=progress%C3%A3o%20aritm%C3%A9tica%20termo%20geral%20soma"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Progressão aritmética",
+    link: "https://www.youtube.com/results?search_query=progress%C3%A3o%20aritm%C3%A9tica%20quest%C3%B5es%20concurso"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Progressão geométrica",
+    link: "https://www.youtube.com/results?search_query=progress%C3%A3o%20geom%C3%A9trica%20termo%20geral%20soma"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Razão e proporção",
+    link: "https://www.youtube.com/results?search_query=raz%C3%A3o%20propor%C3%A7%C3%A3o%20grandezas%20concurso"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Regra de três",
+    link: "https://www.youtube.com/results?search_query=regra%20de%20tr%C3%AAs%20simples%20composta"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Regra de três",
+    link: "https://www.youtube.com/results?search_query=regra%20de%20tr%C3%AAs%20quest%C3%B5es%20concurso%20resolvidas"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Juros simples",
+    link: "https://www.youtube.com/results?search_query=juros%20simples%20f%C3%B3rmula%20exerc%C3%ADcios"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Juros compostos",
+    link: "https://www.youtube.com/results?search_query=juros%20compostos%20f%C3%B3rmula%20exerc%C3%ADcios"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Juros compostos",
+    link: "https://www.youtube.com/results?search_query=juros%20compostos%20quest%C3%B5es%20concurso"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Análise combinatória",
+    link: "https://www.youtube.com/results?search_query=an%C3%A1lise%20combinat%C3%B3ria%20arranjo%20combina%C3%A7%C3%A3o%20permuta%C3%A7%C3%A3o"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Probabilidade",
+    link: "https://www.youtube.com/results?search_query=probabilidade%20exerc%C3%ADcios%20concurso"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Geometria",
+    link: "https://www.youtube.com/results?search_query=geometria%20%C3%A1reas%20volumes%20per%C3%ADmetro"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Matrizes",
+    link: "https://www.youtube.com/results?search_query=matrizes%20opera%C3%A7%C3%B5es%20multiplica%C3%A7%C3%A3o"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Determinantes",
+    link: "https://www.youtube.com/results?search_query=determinantes%20regra%20de%20Sarrus"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Sistemas",
+    link: "https://www.youtube.com/results?search_query=sistemas%20lineares%20escalonamento%20concurso"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Estatística",
+    link: "https://www.youtube.com/results?search_query=estat%C3%ADstica%20descritiva%20m%C3%A9dia%20mediana%20moda%20desvio%20padr%C3%A3o"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Lógica",
+    link: "https://www.youtube.com/results?search_query=l%C3%B3gica%20proposicional%20conectivos%20tabela%20verdade"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Lógica",
+    link: "https://www.youtube.com/results?search_query=racioc%C3%ADnio%20l%C3%B3gico%20quest%C3%B5es%20resolvidas%20concurso"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Sequências",
+    link: "https://www.youtube.com/results?search_query=sequ%C3%AAncias%20l%C3%B3gicas%20racioc%C3%ADnio"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Diagramas",
+    link: "https://www.youtube.com/results?search_query=diagramas%20l%C3%B3gicos%20racioc%C3%ADnio"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Verdades e mentiras",
+    link: "https://www.youtube.com/results?search_query=verdades%20e%20mentiras%20l%C3%B3gica%20concurso"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Princípio da casa dos pombos",
+    link: "https://www.youtube.com/results?search_query=princ%C3%ADpio%20da%20casa%20dos%20pombos%20gavetas"
+  },
+  {
+    materia: "Matemática e Raciocínio Lógico",
+    assunto: "Orientação espacial e temporal",
+    link: "https://www.youtube.com/results?search_query=orienta%C3%A7%C3%A3o%20espacial%20temporal%20racioc%C3%ADnio%20l%C3%B3gico"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "História de Uberlândia",
+    link: "https://www.youtube.com/results?search_query=hist%C3%B3ria%20de%20Uberl%C3%A2ndia%20MG"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Geografia de Uberlândia",
+    link: "https://www.youtube.com/results?search_query=geografia%20de%20Uberl%C3%A2ndia%20MG%20Tri%C3%A2ngulo%20Mineiro"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "História de Minas Gerais",
+    link: "https://www.youtube.com/results?search_query=hist%C3%B3ria%20de%20Minas%20Gerais%20ciclo%20do%20ouro%20inconfid%C3%AAncia"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Geografia de Minas Gerais",
+    link: "https://www.youtube.com/results?search_query=geografia%20de%20Minas%20Gerais%20regi%C3%B5es"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "História do Brasil",
+    link: "https://www.youtube.com/results?search_query=hist%C3%B3ria%20do%20Brasil%20col%C3%B4nia%20imp%C3%A9rio%20rep%C3%BAblica"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Geografia do Brasil",
+    link: "https://www.youtube.com/results?search_query=geografia%20do%20Brasil%20regi%C3%B5es%20biomas"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Política",
+    link: "https://www.youtube.com/results?search_query=organiza%C3%A7%C3%A3o%20pol%C3%ADtica%20Brasil%20tr%C3%AAs%20poderes%20concurso"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Economia",
+    link: "https://www.youtube.com/results?search_query=economia%20infla%C3%A7%C3%A3o%20juros%20PIB%20concurso"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Cultura",
+    link: "https://www.youtube.com/results?search_query=cultura%20brasileira%20diversidade%20patrim%C3%B4nio"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Questões sociais",
+    link: "https://www.youtube.com/results?search_query=quest%C3%B5es%20sociais%20desigualdade%20exclus%C3%A3o%20social"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Nova Ordem Mundial",
+    link: "https://www.youtube.com/results?search_query=nova%20ordem%20mundial%20globaliza%C3%A7%C3%A3o%20geopol%C3%ADtica"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Cultura e comportamento no século XXI",
+    link: "https://www.youtube.com/results?search_query=comportamento%20s%C3%A9culo%20XXI%20tecnologia%20redes%20sociais"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Direitos civis e sociais",
+    link: "https://www.youtube.com/results?search_query=direitos%20sociais%20artigo%206%20constitui%C3%A7%C3%A3o"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Políticas públicas",
+    link: "https://www.youtube.com/results?search_query=pol%C3%ADticas%20p%C3%BAblicas%20ciclo%20formula%C3%A7%C3%A3o%20avalia%C3%A7%C3%A3o"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Desigualdades sociais",
+    link: "https://www.youtube.com/results?search_query=desigualdade%20social%20%C3%ADndice%20de%20Gini%20IDH"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Meio ambiente",
+    link: "https://www.youtube.com/results?search_query=meio%20ambiente%20desenvolvimento%20sustent%C3%A1vel%20leis"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Recursos hídricos",
+    link: "https://www.youtube.com/results?search_query=recursos%20h%C3%ADdricos%20lei%209433%20pol%C3%ADtica%20nacional"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Recursos hídricos",
+    link: "https://www.youtube.com/results?search_query=comit%C3%AA%20de%20bacia%20hidrogr%C3%A1fica%20gest%C3%A3o"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Crises econômicas",
+    link: "https://www.youtube.com/results?search_query=crises%20econ%C3%B4micas%20Brasil%202008%20recess%C3%A3o"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Crises energéticas",
+    link: "https://www.youtube.com/results?search_query=crise%20energ%C3%A9tica%20Brasil%20matriz%20energ%C3%A9tica"
+  },
+  {
+    materia: "Conhecimentos Gerais",
+    assunto: "Atualidades",
+    link: "https://www.youtube.com/results?search_query=atualidades%20concurso%202024%202025"
+  },
+  {
+    materia: "Legislação",
+    assunto: "Lei Orgânica do Município de Uberlândia",
+    link: "https://www.youtube.com/results?search_query=lei%20org%C3%A2nica%20do%20munic%C3%ADpio%20concurso"
+  },
+  {
+    materia: "Legislação",
+    assunto: "Lei Complementar nº 40/1992 — Estatuto dos Servidores Públicos Municipais",
+    link: "https://www.youtube.com/results?search_query=estatuto%20dos%20servidores%20p%C3%BAblicos%20municipais"
+  },
+  {
+    materia: "Legislação",
+    assunto: "Lei nº 12.048/2014 — Plano de Carreira do DMAE",
+    link: "https://www.youtube.com/watch?v=dmae097"
+  },
+  {
+    materia: "Legislação",
+    assunto: "Lei Complementar nº 751/2023 — Estrutura do Poder Executivo",
+    link: "https://www.youtube.com/watch?v=dmae098"
+  },
+  {
+    materia: "Legislação",
+    assunto: "Decreto nº 20.288/2023 — Estrutura administrativa do DMAE",
+    link: "https://www.youtube.com/watch?v=dmae099"
+  },
+  {
+    materia: "Legislação",
+    assunto: "Decreto nº 20.179/2023 — Código de Ética",
+    link: "https://www.youtube.com/results?search_query=c%C3%B3digo%20de%20%C3%A9tica%20servidor%20p%C3%BAblico%20concurso"
+  }
+];
+window.videosDMAE = videosDMAE;
